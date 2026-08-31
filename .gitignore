@@ -1,0 +1,44 @@
+# Local work products and session notes
+/work/
+/docs/
+/reports/
+/tmp/
+/upstreams/
+/staging/
+/.agents/
+/.codex/
+/README_FIRST.md
+/*SESSION_HANDOFF*.md
+/STATUS.md
+/FULL_BACKEND_STATUS.md
+/*AUDIT*.md
+
+# Generated build and analysis artifacts
+**/__pycache__/
+*.py[cod]
+*.o
+*.a
+*.so
+*.dll
+*.dylib
+*.elf
+*.bin
+*.hex
+*.map
+*.su
+*.dis
+*.gcda
+*.gcno
+*.profraw
+*.profdata
+**/build/
+**/CMakeFiles/
+**/CMakeCache.txt
+**/compile_commands.json
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~

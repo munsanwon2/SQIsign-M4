@@ -1,0 +1,6 @@
+# Upstream revisions used while preparing this release.
+compact-SQIsign https://github.com/pqc-lab-ku/compact-SQIsign.git 5b94b09a1dbbdcc8b91749fec83a9f111ef9cce3
+Qlapoti https://github.com/KULeuven-COSIC/Qlapoti.git bd8758d390fd8bdc0ed7a5f6ed299fc036b8f8b4
+SQIsign https://github.com/SQIsign/the-sqisign.git dd133d7aca576c361a270c8e6434832535b42ecc
+SQIsign-vectorization https://github.com/LeeJ-art/the-sqisign-vectorization.git 4585fdee33323c423b79f4d218253a74b170c0af
+pqm4 https://github.com/mupq/pqm4.git cc2c1b992b602d285bd15991a566d5f17b34c1fa

@@ -1,0 +1,26 @@
+/*
+ * Copy this file into the pqm4 m4 directory as backend_bindings.c only after
+ * replacing every placeholder with real compact-SQIsign + Qlapoti calls.
+ */
+#error "Adapt this template to the genuine integrated backend before compiling"
+
+#include "sqisign_m4_backend.h"
+
+int sqisign_m4_backend_keypair(unsigned char *pk, unsigned char *sk) {
+    /* Return REAL_INTERNAL_KEYPAIR(pk, sk); */
+    return -1;
+}
+
+int sqisign_m4_backend_sign(unsigned char *sig, size_t *siglen,
+                            const unsigned char *msg, size_t msglen,
+                            const unsigned char *sk) {
+    /* Return REAL_INTERNAL_DETACHED_SIGN(sig, siglen, msg, msglen, sk); */
+    return -1;
+}
+
+int sqisign_m4_backend_verify(const unsigned char *sig, size_t siglen,
+                              const unsigned char *msg, size_t msglen,
+                              const unsigned char *pk) {
+    /* Return REAL_INTERNAL_DETACHED_VERIFY(sig, siglen, msg, msglen, pk); */
+    return -1;
+}

@@ -1,0 +1,7 @@
+# Executable tooling must retain Unix line endings when cloned on Windows.
+*.sh text eol=lf
+*.py text eol=lf
+
+# Curated exports are byte-for-byte content addressed by their JSON manifests.
+# Never let Git line-ending conversion rewrite those payloads.
+/backends/** -text

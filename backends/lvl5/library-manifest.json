@@ -1,0 +1,783 @@
+{
+  "cmake_compile_definitions": [
+    "ENABLE_SIGN",
+    "NDEBUG",
+    "RADIX_32",
+    "RANDOMBYTES_SYSTEM",
+    "SQISIGN_BUILD_TYPE_REF",
+    "SQISIGN_GF_IMPL_REF",
+    "SQISIGN_TARGET_OS_OTHER",
+    "SQISIGN_TEST_REPS=10",
+    "SQISIGN_VARIANT=lvl5",
+    "TARGET_ARM"
+  ],
+  "cmake_compile_options": [
+    "-O3",
+    "-Wall",
+    "-Werror",
+    "-Wextra",
+    "-Wno-deprecated-declarations",
+    "-Wno-error=attributes",
+    "-Wno-error=format-truncation",
+    "-Wno-error=implicit-function-declaration",
+    "-Wno-error=maybe-uninitialized",
+    "-Wno-error=strict-prototypes",
+    "-Wno-missing-braces",
+    "-Wno-missing-field-initializers",
+    "-Wno-unused-function",
+    "-Wno-unused-parameter",
+    "-Wuninitialized",
+    "-fPIC",
+    "-flto=auto",
+    "-fno-fat-lto-objects",
+    "-fno-strict-aliasing",
+    "-funroll-loops",
+    "-fvisibility=hidden",
+    "-std=c11",
+    "-std=gnu11"
+  ],
+  "cmake_missing_include_directories": [
+    "quaternion/ref/generic/include",
+    "src/ec/ref/lvl5/include",
+    "src/gf/ref/lvl5/include",
+    "src/internal",
+    "src/quaternion/ref/generic/common"
+  ],
+  "excluded_translation_units": [
+    {
+      "bytes": 12852,
+      "path": "src/common/generic/randombytes_system.c",
+      "reason": "host OS RNG; pqm4 must provide its hardware/platform randombytes adapter",
+      "selected_by": [
+        "sqisign_common_sys"
+      ],
+      "sha256": "d0fbc474c225faa9339e830074490bfcbd1d588942e00e7216a0499fe80000e3"
+    }
+  ],
+  "external_platform_requirements": [
+    {
+      "interface": "sqisign_platform_randombytes(unsigned char *, size_t)",
+      "provider": "pqm4 adapter with the exact size_t ABI; it may call pqm4 randombytes(uint8_t *, size_t)"
+    },
+    {
+      "interface": "sqisign_secure_clear/sqisign_secure_free",
+      "provider": "pqm4 no-heap secure cleanup adapter if referenced"
+    }
+  ],
+  "headers": [
+    {
+      "bytes": 524,
+      "path": "include/mem.h",
+      "sha256": "d6d23db333556abc30a44a9fe6b0b2a08c40e8f95c68cbf4b3f981035dab56d3"
+    },
+    {
+      "bytes": 3198,
+      "path": "include/rng.h",
+      "sha256": "103187b851abad9a0661d1a70e10c5db674fbc31ac627dca4141f48975fa28b2"
+    },
+    {
+      "bytes": 2706,
+      "path": "include/sig.h",
+      "sha256": "ada020f82073eb0d29d605ffda335204cf07046e7b0446ec8c88495f87003ec6"
+    },
+    {
+      "bytes": 559,
+      "path": "include/sqisign_m4_workspace.h",
+      "sha256": "95ed81de33f7d869a6afa4141bf143cfd5b908f637db3806fe67dbdfa0f62482"
+    },
+    {
+      "bytes": 58140,
+      "path": "include/sqisign_namespace.h",
+      "sha256": "118cbf0da0c405714f2c5a42f0bb184c67e20a7b8ead07fe193bcbabac7e0180"
+    },
+    {
+      "bytes": 6020,
+      "path": "src/common/generic/include/fips202.h",
+      "sha256": "8ffc7bac075ddd91d6d97906a27131a71eaa5f74dad4ef4248905e7385c058e3"
+    },
+    {
+      "bytes": 1727,
+      "path": "src/common/generic/include/tools.h",
+      "sha256": "53f1d2cb88c76c3ede7ed4995edb95609447a3ba45d041fe400713c34732bd32"
+    },
+    {
+      "bytes": 1026,
+      "path": "src/common/generic/include/tutil.h",
+      "sha256": "c9b7a4855db54a6dbab38a89a7448ae1d8e4012cf7f53bb139cf6cbf47dea524"
+    },
+    {
+      "bytes": 2901,
+      "path": "src/ec/ref/include/biextension.h",
+      "sha256": "16b92738a5a3c85a6c5e55bb1ff169f223767f2b9937a6c538ed1a57f6eeb71f"
+    },
+    {
+      "bytes": 18170,
+      "path": "src/ec/ref/include/ec.h",
+      "sha256": "2d977f30de71929a1bd1f63816d6a4ad250a71c7ed9e75911cd002ee4a981467"
+    },
+    {
+      "bytes": 1022,
+      "path": "src/ec/ref/include/isog.h",
+      "sha256": "67cff607515141f15385051ab31b49c2a13a4fb2c047afabce0a647a5399e5cb"
+    },
+    {
+      "bytes": 1561,
+      "path": "src/gf/ref/include/fp.h",
+      "sha256": "1beb06af6b1915ba232c691f0447e1ab9f7176bebff94fa93703edc043249580"
+    },
+    {
+      "bytes": 1410,
+      "path": "src/gf/ref/include/fp2.h",
+      "sha256": "cafc21c1845e21f731cbe2d4416cfdc037ed354769c8174caa0d070ad6404f0a"
+    },
+    {
+      "bytes": 13119,
+      "path": "src/hd/ref/include/hd.h",
+      "sha256": "a093120a726461944337b650670dea3f97356e066115eb43331f49b1473fe357"
+    },
+    {
+      "bytes": 304,
+      "path": "src/hd/ref/lvlx/theta_isogenies.h",
+      "sha256": "70386e19ac01a636b6d2eea3c082c6e14133d011f8808582306f135b656f9e55"
+    },
+    {
+      "bytes": 4683,
+      "path": "src/hd/ref/lvlx/theta_schedule_de2.h",
+      "sha256": "2ab88f3ad15e99bd7f4d1fc11be55e2eaba17ab1f44769daa1bdbc061ea563e2"
+    },
+    {
+      "bytes": 3446,
+      "path": "src/hd/ref/lvlx/theta_structure.h",
+      "sha256": "41f214e03fc78c6ad1f103b68a72f5bd23a6f232d911860f9b23c237b3e0d11d"
+    },
+    {
+      "bytes": 11330,
+      "path": "src/id2iso/ref/include/id2iso.h",
+      "sha256": "b5fe2c78318e1146530598355ca946cdb7345d691e2abe715608251c54e5f970"
+    },
+    {
+      "bytes": 4798,
+      "path": "src/mp/ref/generic/include/mp.h",
+      "sha256": "fd59ce7d0fdd34104d3d98f323fe02a626ccdf95e7f2f2f87e2bcd83c2ab8ffb"
+    },
+    {
+      "bytes": 84,
+      "path": "src/precomp/ref/lvl5/include/e0_basis.h",
+      "sha256": "652085b8fe1129484556e19204cf1778117ecfa3c1a3c38bb7cef8bf3d3507b2"
+    },
+    {
+      "bytes": 224,
+      "path": "src/precomp/ref/lvl5/include/ec_params.h",
+      "sha256": "1d698ca5014f2d80fcd7f4a7f118b66dfa08f8c33273ea0dd9abb660fc0c937d"
+    },
+    {
+      "bytes": 348,
+      "path": "src/precomp/ref/lvl5/include/encoded_sizes.h",
+      "sha256": "c22b292c6c30b714181095f52bee5c2492c5b2111c5e048f7d2114f584a8d86a"
+    },
+    {
+      "bytes": 1261,
+      "path": "src/precomp/ref/lvl5/include/endomorphism_action.h",
+      "sha256": "5df8f6475d968bf652c1ba1a5d6836906c5e3fbe7a6789ace6827c51f939ced4"
+    },
+    {
+      "bytes": 336,
+      "path": "src/precomp/ref/lvl5/include/fp_constants.h",
+      "sha256": "6feb1ee960176e794880f0370d207851968338dac20b2ac46f78aa293e4b8009"
+    },
+    {
+      "bytes": 458,
+      "path": "src/precomp/ref/lvl5/include/hd_splitting_transforms.h",
+      "sha256": "76fbbc75a609eb341cc997fecffda45fe58a4f0270120cb6a3322c08c1dab518"
+    },
+    {
+      "bytes": 360,
+      "path": "src/precomp/ref/lvl5/include/quaternion_constants.h",
+      "sha256": "70aaed7905481d2e18c9b8f95ae1da5cf015ad73a5555aed6fc969955c930055"
+    },
+    {
+      "bytes": 712,
+      "path": "src/precomp/ref/lvl5/include/quaternion_data.h",
+      "sha256": "162845a810c15c28ac52ac20a522b017ea23e001bbecc59d850a040e93a0bfed"
+    },
+    {
+      "bytes": 273,
+      "path": "src/precomp/ref/lvl5/include/torsion_constants.h",
+      "sha256": "48bcf73a6cbbfbeebddb1267ec982821aa62d3e8a948cee19268985f23569724"
+    },
+    {
+      "bytes": 8459,
+      "path": "src/quaternion/ref/generic/include/intbig.h",
+      "sha256": "270c084b2da653bb1b9158b3fbd79de862646ee668294533b6c2cd6ff4a3b204"
+    },
+    {
+      "bytes": 32911,
+      "path": "src/quaternion/ref/generic/include/quaternion.h",
+      "sha256": "fdeb0678348ba5fbaf04f568adf9325c02129fa5128a3bc03ad6dd590ccc189f"
+    },
+    {
+      "bytes": 16712,
+      "path": "src/quaternion/ref/generic/internal_quaternion_headers/dpe.h",
+      "sha256": "fd19601626c58e9664d57a0f1987f4e13adbe4be5ac4d6fd6c0e21fea6faf64b"
+    },
+    {
+      "bytes": 2448,
+      "path": "src/quaternion/ref/generic/internal_quaternion_headers/hnf_internal.h",
+      "sha256": "72025eed5020ba825d510238d2b2b898c6a9e0883ed65312e4f4b917b6e7e522"
+    },
+    {
+      "bytes": 6304,
+      "path": "src/quaternion/ref/generic/internal_quaternion_headers/intbig_internal.h",
+      "sha256": "fd6138cdc91263047f295dda5c38b7f454b3f3cdfeecd2092803f7bd00141e9a"
+    },
+    {
+      "bytes": 35610,
+      "path": "src/quaternion/ref/generic/internal_quaternion_headers/internal.h",
+      "sha256": "23b8f98ced017b09355539e1400fbf24dd0bd7ad8c719cf1c66ece414a4f947f"
+    },
+    {
+      "bytes": 8048,
+      "path": "src/quaternion/ref/generic/internal_quaternion_headers/lll_internals.h",
+      "sha256": "298581c263ba654c04e7deb41c16ac0ed24efb6265561fe1c1741954228f55a8"
+    },
+    {
+      "bytes": 3582,
+      "path": "src/quaternion/ref/generic/internal_quaternion_headers/mlll_internals.h",
+      "sha256": "1f87443c9fa26b0fe07eb04a4c9d10175db9eb25e8e6feecd7c6b7115c8219b9"
+    },
+    {
+      "bytes": 2726,
+      "path": "src/signature/ref/include/signature.h",
+      "sha256": "2ac98cf98e3c705221a8430b3199a7250f408f040bf3a446b796c4ef6a5caeb7"
+    },
+    {
+      "bytes": 3702,
+      "path": "src/verification/ref/include/verification.h",
+      "sha256": "7613ae22328e97fd319496f77bc68081e758f5ebb5bb3310c34007311b65ae47"
+    }
+  ],
+  "include_directories": [
+    "include",
+    "src/common/generic",
+    "src/common/generic/include",
+    "src/ec/ref/include",
+    "src/gf/ref/include",
+    "src/hd/ref/include",
+    "src/id2iso/ref/include",
+    "src/mp/ref/generic/include",
+    "src/precomp/ref/lvl5/include",
+    "src/quaternion/ref/generic/include",
+    "src/quaternion/ref/generic/internal_quaternion_headers",
+    "src/signature/ref/include",
+    "src/verification/ref/include"
+  ],
+  "invariants": {
+    "gmp_sources_and_includes_absent": true,
+    "host_rng_absent": true,
+    "level_precomputation_present": true,
+    "nist_wrappers_absent": true,
+    "required_qlapoti_sources_present": true,
+    "tests_and_benchmarks_absent": true
+  },
+  "kind": "sqisign-pqm4-library-source-manifest",
+  "level": 5,
+  "pqm4_compile_definitions": [
+    "ENABLE_SIGN",
+    "NDEBUG",
+    "RADIX_32",
+    "SQISIGN_BUILD_TYPE_REF",
+    "SQISIGN_GF_IMPL_REF",
+    "SQISIGN_TARGET_OS_OTHER",
+    "SQISIGN_VARIANT=lvl5",
+    "TARGET_ARM"
+  ],
+  "pqm4_compile_include_directories": [
+    "include",
+    "src/common/generic",
+    "src/common/generic/include",
+    "src/ec/ref/include",
+    "src/gf/ref/include",
+    "src/hd/ref/include",
+    "src/id2iso/ref/include",
+    "src/mp/ref/generic/include",
+    "src/precomp/ref/lvl5/include",
+    "src/quaternion/ref/generic/include",
+    "src/quaternion/ref/generic/internal_quaternion_headers",
+    "src/signature/ref/include",
+    "src/verification/ref/include"
+  ],
+  "pqm4_compile_options": [
+    "-fno-strict-aliasing",
+    "-funroll-loops",
+    "-fvisibility=hidden"
+  ],
+  "pqm4_compile_policy": {
+    "definitions": "CMake target-closure definitions except host RNG and test-count macros",
+    "include_directories": "existing source-tree include directories selected by the CMake target closure",
+    "options": "only target-independent semantic options; pqm4 retains ownership of optimization, language-standard, diagnostics, ABI, and CPU flags"
+  },
+  "root_target": "sqisign_lvl5",
+  "schema_version": 2,
+  "selection": {
+    "cmake_options": [
+      "CMAKE_SYSTEM_NAME=Generic",
+      "CMAKE_SYSTEM_PROCESSOR=arm",
+      "ENABLE_TESTS=OFF",
+      "ENABLE_KAT_TESTS=OFF",
+      "ENABLE_SIGN=ON",
+      "ENABLE_GMP=OFF",
+      "SQISIGN_BUILD_TYPE=ref",
+      "GF_RADIX=32"
+    ],
+    "configuration": "Release",
+    "mechanism": "CMake File API codemodel-v2 transitive target closure",
+    "target_closure": [
+      {
+        "name": "sqisign_common_sys",
+        "type": "STATIC_LIBRARY"
+      },
+      {
+        "name": "sqisign_ec_lvl5",
+        "type": "STATIC_LIBRARY"
+      },
+      {
+        "name": "sqisign_gf_lvl5",
+        "type": "STATIC_LIBRARY"
+      },
+      {
+        "name": "sqisign_hd_lvl5",
+        "type": "STATIC_LIBRARY"
+      },
+      {
+        "name": "sqisign_id2iso_lvl5",
+        "type": "STATIC_LIBRARY"
+      },
+      {
+        "name": "sqisign_lvl5",
+        "type": "STATIC_LIBRARY"
+      },
+      {
+        "name": "sqisign_mp_generic",
+        "type": "STATIC_LIBRARY"
+      },
+      {
+        "name": "sqisign_precomp_lvl5",
+        "type": "STATIC_LIBRARY"
+      },
+      {
+        "name": "sqisign_quaternion_lvl5",
+        "type": "STATIC_LIBRARY"
+      },
+      {
+        "name": "sqisign_signature_lvl5",
+        "type": "STATIC_LIBRARY"
+      },
+      {
+        "name": "sqisign_verification_lvl5",
+        "type": "STATIC_LIBRARY"
+      }
+    ]
+  },
+  "translation_units": [
+    {
+      "bytes": 28576,
+      "path": "src/common/generic/fips202.c",
+      "selected_by": [
+        "sqisign_common_sys"
+      ],
+      "sha256": "089b7144789490b60a1df91f0d8acd9ed55578c960d8c545a5e10b2dd8b263a9"
+    },
+    {
+      "bytes": 15612,
+      "path": "src/ec/ref/lvlx/basis.c",
+      "selected_by": [
+        "sqisign_ec_lvl5"
+      ],
+      "sha256": "3647f13c1c4701e79f6885e59dbe03152008f4a15bfc48510fea726d9a4e397e"
+    },
+    {
+      "bytes": 25179,
+      "path": "src/ec/ref/lvlx/biextension.c",
+      "selected_by": [
+        "sqisign_ec_lvl5"
+      ],
+      "sha256": "7bbdd31c003e859b37c2d4ec6b711c5ee5d0b363a92fb9491eeb2f52fd350b59"
+    },
+    {
+      "bytes": 21165,
+      "path": "src/ec/ref/lvlx/ec.c",
+      "selected_by": [
+        "sqisign_ec_lvl5"
+      ],
+      "sha256": "19c854357af6d4e8c8b7184149c6f587c32c68ae4f3230e52f6bfd239c76a0a8"
+    },
+    {
+      "bytes": 12372,
+      "path": "src/ec/ref/lvlx/ec_jac.c",
+      "selected_by": [
+        "sqisign_ec_lvl5"
+      ],
+      "sha256": "f8468beb32a32c95345069d473c499de91dacda42155ccff865c6076f5130bfb"
+    },
+    {
+      "bytes": 8790,
+      "path": "src/ec/ref/lvlx/isog_chains.c",
+      "selected_by": [
+        "sqisign_ec_lvl5"
+      ],
+      "sha256": "de959ab7a66bce04296bf8b482c05024e7ef01bdcb7dcd3724149cdc16696608"
+    },
+    {
+      "bytes": 2091,
+      "path": "src/ec/ref/lvlx/xeval.c",
+      "selected_by": [
+        "sqisign_ec_lvl5"
+      ],
+      "sha256": "647b26339802334d97be88fad45454d3671da250d4c12f5b9d8e1591ae43e5ee"
+    },
+    {
+      "bytes": 1832,
+      "path": "src/ec/ref/lvlx/xisog.c",
+      "selected_by": [
+        "sqisign_ec_lvl5"
+      ],
+      "sha256": "eff2b5284753104e97ae6ef7e66b25d0a0abb9330d1d0f9f9e869eb07f44fa9b"
+    },
+    {
+      "bytes": 38507,
+      "path": "src/gf/ref/lvl5/fp_p27500_32.c",
+      "selected_by": [
+        "sqisign_gf_lvl5"
+      ],
+      "sha256": "32b01d7353f6ae139e7f0ef9f8de46e035da6a5a05d46b3d30edb0578c886ef9"
+    },
+    {
+      "bytes": 403,
+      "path": "src/gf/ref/lvlx/fp.c",
+      "selected_by": [
+        "sqisign_gf_lvl5"
+      ],
+      "sha256": "4e7ed01d34c540323fdb8bc70b30cd821f68e34cf13382a43755f875afc035e2"
+    },
+    {
+      "bytes": 7210,
+      "path": "src/gf/ref/lvlx/fp2.c",
+      "selected_by": [
+        "sqisign_gf_lvl5"
+      ],
+      "sha256": "80e4030a71ed2fb22e0b92e5eaef85f12f1c6f9c623b25069bc56a7a535e58ac"
+    },
+    {
+      "bytes": 2877,
+      "path": "src/hd/ref/lvlx/hd.c",
+      "selected_by": [
+        "sqisign_hd_lvl5"
+      ],
+      "sha256": "eb6db22a2c91d8988c85818bd748dc75fa6b0fdbb81b16528dbbe80a94de7983"
+    },
+    {
+      "bytes": 51570,
+      "path": "src/hd/ref/lvlx/theta_isogenies.c",
+      "selected_by": [
+        "sqisign_hd_lvl5"
+      ],
+      "sha256": "6e45d119391679878b86fbd50077c14530ced244b7a7dc8a685af2bbbf42f2f4"
+    },
+    {
+      "bytes": 2012,
+      "path": "src/hd/ref/lvlx/theta_structure.c",
+      "selected_by": [
+        "sqisign_hd_lvl5"
+      ],
+      "sha256": "a25034352c1b975e0b29e8a3a96aaf6cfa58191b40ec0ca386063897ed7f87ae"
+    },
+    {
+      "bytes": 29238,
+      "path": "src/id2iso/ref/lvlx/dim2id2iso.c",
+      "selected_by": [
+        "sqisign_id2iso_lvl5"
+      ],
+      "sha256": "dac96deb7afb59e0e8ceaa274e69437eb46fdc72bf5696a94749bc57b77b02e2"
+    },
+    {
+      "bytes": 12889,
+      "path": "src/id2iso/ref/lvlx/id2iso.c",
+      "selected_by": [
+        "sqisign_id2iso_lvl5"
+      ],
+      "sha256": "3bc570c395f9b1d02cc653afd7f70ed755ba61510c1163d263156c3be5e83341"
+    },
+    {
+      "bytes": 9844,
+      "path": "src/mp/ref/generic/mp.c",
+      "selected_by": [
+        "sqisign_mp_generic"
+      ],
+      "sha256": "e9d8e17def33c72d26dbaab533158e33e8c2b7449d36b5b42fa51808b4df74d0"
+    },
+    {
+      "bytes": 3888,
+      "path": "src/precomp/ref/lvl5/e0_basis.c",
+      "selected_by": [
+        "sqisign_precomp_lvl5"
+      ],
+      "sha256": "c40028a95f9c61c764f769675d0748a089510d6a86efe169ed5ff960f225cb42"
+    },
+    {
+      "bytes": 104,
+      "path": "src/precomp/ref/lvl5/ec_params.c",
+      "selected_by": [
+        "sqisign_precomp_lvl5"
+      ],
+      "sha256": "954043f6cd14aa85a1b84a76e8040be32faf09a462784c361c7d23644756aade"
+    },
+    {
+      "bytes": 16885,
+      "path": "src/precomp/ref/lvl5/endomorphism_action.c",
+      "selected_by": [
+        "sqisign_precomp_lvl5"
+      ],
+      "sha256": "b6e7f452e2e29e33bfeccd4a0e15cdf41b9b20cd62a9b0f922594dd7ddc01400"
+    },
+    {
+      "bytes": 9498,
+      "path": "src/precomp/ref/lvl5/hd_splitting_transforms.c",
+      "selected_by": [
+        "sqisign_precomp_lvl5"
+      ],
+      "sha256": "0281e1dc15796f9fe86491a139cff136b94add74b2e4b462d05a8e7f2301bf17"
+    },
+    {
+      "bytes": 2046,
+      "path": "src/precomp/ref/lvl5/quaternion_data.c",
+      "selected_by": [
+        "sqisign_precomp_lvl5"
+      ],
+      "sha256": "a7c5ec34a89d2a435d0c24e46251bfecfe77c1579dd8125d2994197af9da2e80"
+    },
+    {
+      "bytes": 465,
+      "path": "src/precomp/ref/lvl5/torsion_constants.c",
+      "selected_by": [
+        "sqisign_precomp_lvl5"
+      ],
+      "sha256": "5321d29a86849d8b1c5d8d05283d1eff083ab29978a7a23be7799b1de1e76042"
+    },
+    {
+      "bytes": 15376,
+      "path": "src/quaternion/ref/generic/algebra.c",
+      "selected_by": [
+        "sqisign_quaternion_lvl5"
+      ],
+      "sha256": "d0e702c64b2012089b182d1c51567356e53c4346c6d10ae8bfd104fbd9ba88f8"
+    },
+    {
+      "bytes": 5660,
+      "path": "src/quaternion/ref/generic/dim2.c",
+      "selected_by": [
+        "sqisign_quaternion_lvl5"
+      ],
+      "sha256": "6529d55842c4f3d001592e919d24d2884f31e07a8b26413cfed104d8d5ed3d80"
+    },
+    {
+      "bytes": 16122,
+      "path": "src/quaternion/ref/generic/dim4.c",
+      "selected_by": [
+        "sqisign_quaternion_lvl5"
+      ],
+      "sha256": "9f27644a3546e2d9a27de801a3f25695cf2d6eccd7cc3d7c95d828e2fd79fefd"
+    },
+    {
+      "bytes": 2007,
+      "path": "src/quaternion/ref/generic/dpe.c",
+      "selected_by": [
+        "sqisign_quaternion_lvl5"
+      ],
+      "sha256": "657d95d78c0daf0c1cd240f34cc22f25e328b53bb280d7ed7a7f5710cb37f509"
+    },
+    {
+      "bytes": 2337,
+      "path": "src/quaternion/ref/generic/finit.c",
+      "selected_by": [
+        "sqisign_quaternion_lvl5"
+      ],
+      "sha256": "bf4790b430585011c8a48ac7abaeea02830bc0ed5b7ea8890204ae6e3908f8f5"
+    },
+    {
+      "bytes": 6642,
+      "path": "src/quaternion/ref/generic/hnf/hnf.c",
+      "selected_by": [
+        "sqisign_quaternion_lvl5"
+      ],
+      "sha256": "375b362ddfc9819f42f44715ca4fe71f339cc139d19b85b73af3fce8961cd260"
+    },
+    {
+      "bytes": 5152,
+      "path": "src/quaternion/ref/generic/hnf/hnf_internal.c",
+      "selected_by": [
+        "sqisign_quaternion_lvl5"
+      ],
+      "sha256": "29ad8c3ce99f08d1447da5b8534920d503f02bb736337cc581688231e6bd1739"
+    },
+    {
+      "bytes": 342,
+      "path": "src/quaternion/ref/generic/hnf/ibz_division.c",
+      "selected_by": [
+        "sqisign_quaternion_lvl5"
+      ],
+      "sha256": "fd3011432e368df5d64e6ac327eaad0d288f2fec2903000add5d503387c9c4c4"
+    },
+    {
+      "bytes": 19145,
+      "path": "src/quaternion/ref/generic/ideal.c",
+      "selected_by": [
+        "sqisign_quaternion_lvl5"
+      ],
+      "sha256": "a90ad438b3e403a23ed5ca60d18d885cb39e6c386759a89236b22d247b42818d"
+    },
+    {
+      "bytes": 91799,
+      "path": "src/quaternion/ref/generic/intbig.c",
+      "selected_by": [
+        "sqisign_quaternion_lvl5"
+      ],
+      "sha256": "e521d7b42ad8282f38310acfe9836ef872e598e0364f999a597555e115c5002a"
+    },
+    {
+      "bytes": 8848,
+      "path": "src/quaternion/ref/generic/integers.c",
+      "selected_by": [
+        "sqisign_quaternion_lvl5"
+      ],
+      "sha256": "c7cc0613218f091a5d403fe9c3b07b6557c8b7606d955483d30527c3d354d516"
+    },
+    {
+      "bytes": 21956,
+      "path": "src/quaternion/ref/generic/lat_ball.c",
+      "selected_by": [
+        "sqisign_quaternion_lvl5"
+      ],
+      "sha256": "d8af2e82a98f547b7be325d14132447169aab9dcec158e960d0ae0315bd269d4"
+    },
+    {
+      "bytes": 20773,
+      "path": "src/quaternion/ref/generic/lattice.c",
+      "selected_by": [
+        "sqisign_quaternion_lvl5"
+      ],
+      "sha256": "9b1c6b47e375088aa7d84a0d64f278c0b1e70924629b4e52247ba8765368d878"
+    },
+    {
+      "bytes": 11263,
+      "path": "src/quaternion/ref/generic/lll/l2.c",
+      "selected_by": [
+        "sqisign_quaternion_lvl5"
+      ],
+      "sha256": "5bceafd871dd016dc9355c9ed0069c7e965295abc0941f35a31d0a835bffd6e6"
+    },
+    {
+      "bytes": 6348,
+      "path": "src/quaternion/ref/generic/lll/lll_applications.c",
+      "selected_by": [
+        "sqisign_quaternion_lvl5"
+      ],
+      "sha256": "e19072e10e5b6885154a22679fafda1dcb7b2595182a6b08644ff43707c646ef"
+    },
+    {
+      "bytes": 31053,
+      "path": "src/quaternion/ref/generic/lll/ml2.c",
+      "selected_by": [
+        "sqisign_quaternion_lvl5"
+      ],
+      "sha256": "fc46236b034689973248a9de81d3fbd49875bf8964b69bc1117f9fd54cf0f0dd"
+    },
+    {
+      "bytes": 41920,
+      "path": "src/quaternion/ref/generic/lll/mlll.c",
+      "selected_by": [
+        "sqisign_quaternion_lvl5"
+      ],
+      "sha256": "25ff675fb1056f281fa17925d7783b63658ebbef515be6b39eb4c9a9ce341f92"
+    },
+    {
+      "bytes": 28827,
+      "path": "src/quaternion/ref/generic/normeq.c",
+      "selected_by": [
+        "sqisign_quaternion_lvl5"
+      ],
+      "sha256": "eb132ba022e5251382fffdfa4710b7251e4096195f8f9b655fa1e2b2d7a6d991"
+    },
+    {
+      "bytes": 41862,
+      "path": "src/quaternion/ref/generic/qlapoti.c",
+      "selected_by": [
+        "sqisign_quaternion_lvl5"
+      ],
+      "sha256": "e1b2ad5d9197861535c090532631c2ac7e2a067d50556609070200ffcc9e02a3"
+    },
+    {
+      "bytes": 4404,
+      "path": "src/quaternion/ref/generic/rationals.c",
+      "selected_by": [
+        "sqisign_quaternion_lvl5"
+      ],
+      "sha256": "8331b0378c4630a03fe54296a7141156bf8d915e3844f3eb0200b4f0733c866e"
+    },
+    {
+      "bytes": 9190,
+      "path": "src/signature/ref/lvlx/encode_signature.c",
+      "selected_by": [
+        "sqisign_signature_lvl5"
+      ],
+      "sha256": "1306a810d47725eaba47844b1fe52b4900bea7cc217e2333a13f5367dd2c3396"
+    },
+    {
+      "bytes": 2971,
+      "path": "src/signature/ref/lvlx/keygen.c",
+      "selected_by": [
+        "sqisign_signature_lvl5"
+      ],
+      "sha256": "58b782c167ecb8d3e903d0da6d9f9a114d453f0ca98efc5a3b6ecb8770538d5c"
+    },
+    {
+      "bytes": 37307,
+      "path": "src/signature/ref/lvlx/sign.c",
+      "selected_by": [
+        "sqisign_signature_lvl5"
+      ],
+      "sha256": "c5dd5ccd9affa7051e61f1a672664030f624336120cbaceb47e28e3a49cbdafb"
+    },
+    {
+      "bytes": 3071,
+      "path": "src/sqisign.c",
+      "selected_by": [
+        "sqisign_lvl5"
+      ],
+      "sha256": "9705ca72b1ecb18c6c5d0aec53698eadd237182537fbcd8f3b26e25ab717dcb4"
+    },
+    {
+      "bytes": 3006,
+      "path": "src/verification/ref/lvlx/common.c",
+      "selected_by": [
+        "sqisign_verification_lvl5"
+      ],
+      "sha256": "4a88f5c3d5173bd234d41afe7c780ecf10abf304e63710d05cc688eeaec71ef1"
+    },
+    {
+      "bytes": 5819,
+      "path": "src/verification/ref/lvlx/encode_verification.c",
+      "selected_by": [
+        "sqisign_verification_lvl5"
+      ],
+      "sha256": "92c28ffc5dc80a93d75bc2c35e0ba074de785ab140fd3f1b0fe20f3f86ce4018"
+    },
+    {
+      "bytes": 13983,
+      "path": "src/verification/ref/lvlx/verify.c",
+      "selected_by": [
+        "sqisign_verification_lvl5"
+      ],
+      "sha256": "403d95797a2ca234c25865342377502efd0cb93848bf19b72819f4cedd99e7bb"
+    }
+  ]
+}
