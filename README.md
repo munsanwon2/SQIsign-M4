@@ -1,4 +1,4 @@
-# SQIsign-Qlapoti for Cortex-M4
+# SQIsign implementation on ARM Cortex-M4
 
 This repository contains a fixed-precision SQIsign port for the Arm Cortex-M4,
 packaged as three `pqm4` signature schemes:
