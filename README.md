@@ -7,8 +7,8 @@ packaged as three `pqm4` signature schemes:
 - `sqisign-qlapoti-lvl3` (NIST Level III)
 - `sqisign-qlapoti-lvl5` (NIST Level V)
 
-The implementation combines the compact-SQIsign algorithms with Qlapoti and a
-bounded-memory Cortex-M4 integration. It avoids GMP and hosted heap services in
+The implementation combines the compact quaternion algorithms for SQIsign with Qlapoti
+and a bounded-memory Cortex-M4 integration. It avoids GMP and hosted heap services in
 the target backend. The STM32F407 linker profile uses the device's split SRAM
 banks so that the complete 192 KiB physical SRAM is available to the program.
 
