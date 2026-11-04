@@ -416,8 +416,10 @@ quat_represent_integer_with_status(
             }
             // we further check that (x-t)/2 = 1 mod 2 and (y-z)/2 = 1 mod 2 to ensure that the
             // resulting endomorphism will behave well for dim 2 computations
-            found = found && ((ibz_get(&coeffs[0]) - ibz_get(&coeffs[3])) % 4 == 2) &&
-                    ((ibz_get(&coeffs[1]) - ibz_get(&coeffs[2])) % 4 == 2);
+            // Reduce before subtracting: truncated signed 32-bit values can
+            // overflow, and a negative C remainder is not a residue modulo 4.
+            found = found && ((ibz_mod_ui(&coeffs[0], 4) + 4 - ibz_mod_ui(&coeffs[3], 4)) % 4 == 2) &&
+                    ((ibz_mod_ui(&coeffs[1], 4) + 4 - ibz_mod_ui(&coeffs[2], 4)) % 4 == 2);
         }
         if (found) {
 

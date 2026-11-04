@@ -684,12 +684,12 @@
       "sha256": "e19072e10e5b6885154a22679fafda1dcb7b2595182a6b08644ff43707c646ef"
     },
     {
-      "bytes": 31053,
+      "bytes": 30908,
       "path": "src/quaternion/ref/generic/lll/ml2.c",
       "selected_by": [
         "sqisign_quaternion_lvl1"
       ],
-      "sha256": "fc46236b034689973248a9de81d3fbd49875bf8964b69bc1117f9fd54cf0f0dd"
+      "sha256": "6df24fe127dea95cf6cb5bebf34ec2a3e6bf93acf762273e279da0af5c261484"
     },
     {
       "bytes": 41920,
@@ -700,12 +700,12 @@
       "sha256": "25ff675fb1056f281fa17925d7783b63658ebbef515be6b39eb4c9a9ce341f92"
     },
     {
-      "bytes": 28827,
+      "bytes": 29017,
       "path": "src/quaternion/ref/generic/normeq.c",
       "selected_by": [
         "sqisign_quaternion_lvl1"
       ],
-      "sha256": "eb132ba022e5251382fffdfa4710b7251e4096195f8f9b655fa1e2b2d7a6d991"
+      "sha256": "3e2bca4b19566b3c5713283b3cfab42d0e6e8fd965cb40e82ae9a6663aec765a"
     },
     {
       "bytes": 41862,

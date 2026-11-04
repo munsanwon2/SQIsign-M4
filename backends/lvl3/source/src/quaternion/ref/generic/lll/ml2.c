@@ -377,14 +377,10 @@ ml2_main_loop(ml2_state_t *st)
             continue;
         }
 
-        if (kappa != kappa_prime) {
-            /* Insertion reorders b[zeta..kappa_prime], so r[j][*] and
-             * mu[j][*] for j in (kappa,kappa_prime] are stale.  Recompute
-             * those rows only after ruling out a zero at the insertion
-             * point, since a zero row has no valid Gram--Schmidt divisor. */
-            for (int j = kappa + 1; j <= kappa_prime; j++)
-                ml2_cfa_kappa(st, j);
-        }
+        /* Insertion invalidates the later Gram--Schmidt rows.  Recompute
+         * each lazily in LazySizeReduce, after its predecessors have been
+         * reduced and any zero vectors removed.  Eagerly rebuilding all
+         * rows here can divide by a zero diagonal from a dependent row. */
 
         int next = kappa + 1;
         if (st->zeta + 1 > next)
