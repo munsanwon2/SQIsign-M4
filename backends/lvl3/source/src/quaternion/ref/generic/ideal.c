@@ -1,4 +1,8 @@
 #include <quaternion.h>
+
+#if defined(TARGET_ARM)
+#include <sqisign_m4_workspace.h>
+#endif
 #include <stdlib.h>
 #include "internal.h"
 #include "mlll_internals.h"
@@ -141,13 +145,21 @@ quat_lideal_create_with_norm(quat_left_ideal_t *lideal,
      * C modulo N preserves the exact Z-span after adjoining N*Z^4, while it
      * prevents a large response representative from entering ML2. */
     int ok = 0;
-    ibz_vec_4_t generators[8], x_relative;
+    ibz_vec_4_t x_relative;
     quat_alg_elem_t x_reduced, order_basis_elem, product;
     quat_left_ideal_t candidate;
     ibz_t abs_N;
 
     if (!quat_order_is_maximal(order, alg) || quat_alg_elem_is_zero(x))
         return 0;
+
+#if defined(TARGET_ARM)
+    ibz_vec_4_t *generators = sqisign_m4_workspace_acquire(8 * sizeof(*generators));
+    if (generators == NULL)
+        return 0;
+#else
+    ibz_vec_4_t generators[8];
+#endif
 
     for (int i = 0; i < 8; i++)
         ibz_vec_4_init(&generators[i]);
@@ -162,22 +174,17 @@ quat_lideal_create_with_norm(quat_left_ideal_t *lideal,
     if (ibz_is_zero(&abs_N))
         goto cleanup;
 
-    /* quat_lattice_contains forms a 4x4 determinant/adjugate.  Check its
-     * conservative cofactor and adjugate-times-x bounds before invoking it. */
-    int order_bits = 0;
-    int x_bits = 0;
-    for (int row = 0; row < 4; row++) {
-        if (ibz_bitsize(&x->coord[row]) > x_bits)
-            x_bits = ibz_bitsize(&x->coord[row]);
-        for (int column = 0; column < 4; column++)
-            if (ibz_bitsize(&order->basis[row][column]) > order_bits)
-                order_bits = ibz_bitsize(&order->basis[row][column]);
-    }
-    if (4 * order_bits + 4 > IBZ_BITS - 1 ||
-        3 * order_bits + x_bits + 4 > IBZ_BITS - 1 ||
-        4 * order_bits + ibz_bitsize(&x->denom) + 2 > IBZ_BITS - 1 ||
-        !quat_lattice_contains(&x_relative, order, x))
+    if (ibz_is_negative(&abs_N) || !quat_lattice_contains(&x_relative, order, x))
         goto cleanup;
+
+    int order_bits = 0;
+    for (int row = 0; row < 4; row++) {
+        for (int column = 0; column < 4; column++) {
+            int bits = ibz_bitsize(&order->basis[row][column]);
+            if (bits > order_bits)
+                order_bits = bits;
+        }
+    }
 
     /* Before reduction modulo N, multiplication in the quaternion basis can
      * introduce one factor p.  Reject before that transient or ML2's squared
@@ -209,22 +216,14 @@ quat_lideal_create_with_norm(quat_left_ideal_t *lideal,
         ibz_copy(&generators[4 + column][column], &abs_N);
     }
 
-    /* Only ML2 is retried.  No HNF/cofactor fallback and no surrounding
-     * protocol state is regenerated.  Its row output is written directly to
-     * the still-private candidate basis. */
-    if (quat_ml2_retry(
-            &candidate.lattice.basis[0], 4, generators, 8, alg) != 4)
+    /* Move the generators to ambient coordinates before applying the
+     * quaternion metric. ML2 writes rows into the private candidate. */
+    for (int column = 0; column < 8; column++) {
+        if (!ibz_mat_4x4_eval_checked(&generators[column], &order->basis, &generators[column]))
+            goto cleanup;
+    }
+    if (quat_ml2_retry(&candidate.lattice.basis[0], 4, generators, 8, alg) != 4)
         goto cleanup;
-
-    for (int column = 0; column < 4; column++)
-        /* ibz_mat_4x4_eval accumulates in a private vector before publishing,
-         * so mapping each ML2 row in place is alias-safe. */
-        ibz_mat_4x4_eval(&candidate.lattice.basis[column],
-                         &order->basis,
-                         (const ibz_vec_4_t *)&candidate.lattice.basis[column]);
-
-    /* ibz_mat_4x4_eval above writes a vector, whereas lattice generators are
-     * columns.  Transpose the four mapped row slots into column form. */
     quat_lideal_basis_transpose_in_place(&candidate.lattice.basis);
     ibz_copy(&candidate.lattice.denom, &order->denom);
     if (!quat_lattice_reduce_denom(&candidate.lattice, &candidate.lattice))
@@ -258,6 +257,9 @@ cleanup:
     ibz_vec_4_finalize(&x_relative);
     for (int i = 0; i < 8; i++)
         ibz_vec_4_finalize(&generators[i]);
+#if defined(TARGET_ARM)
+    sqisign_m4_workspace_release(generators);
+#endif
     return ok;
 }
 
@@ -338,9 +340,10 @@ quat_lideal_mul(quat_left_ideal_t *product,
     candidate.parent_order = lideal->parent_order;
     if (!quat_alg_norm(&norm, &norm_d, alpha, alg))
         goto cleanup;
-    ibz_mul(&(candidate.norm), &(lideal->norm), &norm);
-    ibz_div(&(candidate.norm), &remainder, &(candidate.norm), &norm_d);
-    if (!ibz_is_zero(&remainder))
+    /* The norm fraction is reduced, so norm_d divides the old ideal norm
+     * whenever the product has integral norm. Cancel before multiplication. */
+    ibz_div(&candidate.norm, &remainder, &lideal->norm, &norm_d);
+    if (!ibz_is_zero(&remainder) || !ibz_mul_checked(&candidate.norm, &candidate.norm, &norm))
         goto cleanup;
 
     quat_lideal_copy(product, &candidate);
@@ -382,32 +385,30 @@ quat_lideal_inter(quat_left_ideal_t *inter,
                   const quat_left_ideal_t *I2,
                   const quat_alg_t *alg)
 {
-    if (I1->parent_order != I2->parent_order ||
-        !quat_order_is_maximal((I2->parent_order), alg))
+    if (inter == NULL || I1 == NULL || I2 == NULL || alg == NULL ||
+        I1->parent_order == NULL || I2->parent_order == NULL ||
+        (I1->parent_order != I2->parent_order &&
+         !quat_lattice_equal(I1->parent_order, I2->parent_order)) ||
+        !quat_order_is_maximal(I2->parent_order, alg) ||
+        !quat_lattice_inclusion(&I1->lattice, I1->parent_order) ||
+        !quat_lattice_inclusion(&I2->lattice, I2->parent_order))
         return 0;
-    quat_left_ideal_t candidate;
-    int ok = 0;
-    quat_left_ideal_init(&candidate);
-
     /* Paper Algorithm 3, CompactIdealIntersection. The ideal norms are part
      * of the algorithm: together with all reduced-trace pairings they recover
-     * nrd(I1 + I2), hence the eight generators of I1 intersect I2. */
+     * nrd(I1 + I2), hence the eight generators of I1 intersect I2.
+     * The lattice routine publishes both outputs together, after its final
+     * check, and permits them to alias either input. */
     if (!quat_lattice_intersect_mlll(
-            &candidate.lattice,
-            &candidate.norm,
+            &inter->lattice,
+            &inter->norm,
             &I1->lattice,
             &I1->norm,
             &I2->lattice,
             &I2->norm,
             alg))
-        goto cleanup;
-    candidate.parent_order = I1->parent_order;
-    quat_lideal_copy(inter, &candidate);
-    ok = 1;
-
-cleanup:
-    quat_left_ideal_finalize(&candidate);
-    return ok;
+        return 0;
+    inter->parent_order = I1->parent_order;
+    return 1;
 }
 
 int
@@ -435,22 +436,26 @@ quat_lideal_right_transporter(quat_lattice_t *trans,
                               const quat_left_ideal_t *lideal2,
                               const quat_alg_t *alg)
 {
-    assert(quat_order_is_maximal((lideal1->parent_order), alg));
-    assert(quat_order_is_maximal((lideal2->parent_order), alg));
-    assert(lideal1->parent_order == lideal2->parent_order);
-    quat_lattice_t inv;
-    quat_lattice_init(&inv);
-    quat_lideal_inverse_lattice_without_hnf(&inv, lideal1, alg);
-    int ok = quat_lattice_mul(
-        trans, &inv, &(lideal2->lattice), alg, &(lideal1->norm), &(lideal2->norm));
-    quat_lattice_finalize(&inv);
-    return ok;
+    if (trans == NULL || lideal1 == NULL || lideal2 == NULL || alg == NULL ||
+        lideal1->parent_order == NULL || lideal2->parent_order == NULL ||
+        (lideal1->parent_order != lideal2->parent_order &&
+         !quat_lattice_equal(lideal1->parent_order, lideal2->parent_order)) ||
+        !quat_order_is_maximal(lideal1->parent_order, alg) ||
+        ibz_cmp(&lideal1->norm, &ibz_const_zero) <= 0 || ibz_cmp(&lideal2->norm, &ibz_const_zero) <= 0)
+        return 0;
+    quat_lattice_t inverse;
+    quat_lattice_conjugate_without_hnf(&inverse, &lideal1->lattice);
+    if (!ibz_mul_checked(&inverse.denom, &inverse.denom, &lideal1->norm) ||
+        !quat_lattice_reduce_denom(&inverse, &inverse))
+        return 0;
+    /* I1 inverse is fractional. Its right order is the common left order,
+     * so the ordered product inverse * I2 is composable. */
+    return quat_lattice_mul_mlll(trans, &inverse, &lideal2->lattice, alg);
 }
 
 int
 quat_lideal_right_order(quat_lattice_t *order, const quat_left_ideal_t *lideal, const quat_alg_t *alg)
 {
-    assert(quat_order_is_maximal((lideal->parent_order), alg));
     return quat_lideal_right_transporter(order, lideal, lideal, alg);
 }
 
@@ -458,16 +463,16 @@ int
 quat_lideal_class_gram(ibz_mat_4x4_t *G, const quat_left_ideal_t *lideal, const quat_alg_t *alg)
 {
     int ok = 0;
-    quat_lattice_gram(G, &(lideal->lattice), alg);
+    if (!quat_lattice_gram_checked(G, &lideal->lattice, alg))
+        return 0;
 
     // divide by norm · denominator²
     ibz_t divisor, rmd;
     ibz_init(&divisor);
     ibz_init(&rmd);
 
-    ibz_mul(&divisor, &(lideal->lattice.denom), &(lideal->lattice.denom));
-    ibz_mul(&divisor, &divisor, &(lideal->norm));
-    if (ibz_is_zero(&divisor))
+    if (!ibz_mul_checked(&divisor, &lideal->lattice.denom, &lideal->lattice.denom) ||
+        !ibz_mul_checked(&divisor, &divisor, &lideal->norm) || ibz_is_zero(&divisor))
         goto cleanup;
 
     for (int i = 0; i < 4; i++) {
@@ -508,41 +513,42 @@ quat_lideal_conjugate_without_hnf(quat_left_ideal_t *conj,
 int
 quat_order_discriminant(ibz_t *disc, const quat_lattice_t *order, const quat_alg_t *alg)
 {
-    int ok = 0;
-    ibz_t det, sqr, div;
-    ibz_mat_4x4_t gram;
-    ibz_init(&det);
-    ibz_init(&sqr);
-    ibz_init(&div);
-    ibz_mat_4x4_init(&gram);
+    ibz_t det, scale, gcd, remainder;
+    if (disc == NULL)
+        return 0;
+    if (order == NULL || alg == NULL || ibz_is_zero(&order->denom) ||
+        !ibz_mat_4x4_inv_with_det_as_denom(NULL, &det, &order->basis))
+        goto failure;
+    ibz_abs(&det, &det);
+    ibz_abs(&scale, &order->denom);
+    if (ibz_is_negative(&det) || ibz_is_negative(&scale))
+        goto failure;
 
-    /* quat_lattice_gram computes exactly
-     *
-     *   basis^T * 2*diag(1, 1, p, p) * basis.
-     *
-     * Computing that form directly needs one matrix instead of retaining a
-     * transpose, a diagonal matrix, and their product throughout the deeply
-     * nested ideal-validation path. */
-    quat_lattice_gram(&gram, order, alg);
-    if (!ibz_mat_4x4_inv_with_det_as_denom(NULL, &det, &gram))
-        goto cleanup;
-    ibz_mul(&div, &(order->denom), &(order->denom));
-    ibz_mul(&div, &div, &div);
-    ibz_mul(&div, &div, &div);
-    if (ibz_is_zero(&div))
-        goto cleanup;
-    ibz_div(&sqr, &div, &det, &div);
-    ok = ibz_is_zero(&div);
-    ok = ok && ibz_sqrt(disc, &sqr);
+    /* sqrt(det(2 M^t diag(1,1,p,p) M / r^2)) = 4p |det M| / r^4.
+     * Cancel r four times; the trace Gram and r^8 are unnecessary. */
+    ibz_t factors[3];
+    ibz_set(&factors[0], 4);
+    ibz_copy(&factors[1], &alg->p);
+    ibz_copy(&factors[2], &det);
+    for (int i = 0; i < 4; i++) {
+        ibz_t divisor;
+        ibz_copy(&divisor, &scale);
+        for (int j = 0; j < 3; j++) {
+            ibz_gcd(&gcd, &factors[j], &divisor);
+            ibz_div(&factors[j], &remainder, &factors[j], &gcd);
+            ibz_div(&divisor, &remainder, &divisor, &gcd);
+        }
+        if (!ibz_is_one(&divisor))
+            goto failure;
+    }
+    if (!ibz_mul_checked(&det, &factors[0], &factors[1]) ||
+        !ibz_mul_checked(disc, &det, &factors[2]))
+        goto failure;
+    return 1;
 
-cleanup:
-    if (!ok)
-        ibz_set(disc, 0);
-    ibz_finalize(&det);
-    ibz_finalize(&div);
-    ibz_finalize(&sqr);
-    ibz_mat_4x4_finalize(&gram);
-    return (ok);
+failure:
+    ibz_set(disc, 0);
+    return 0;
 }
 
 int
@@ -551,8 +557,7 @@ quat_order_is_maximal(const quat_lattice_t *order, const quat_alg_t *alg)
     int res;
     ibz_t disc;
     ibz_init(&disc);
-    quat_order_discriminant(&disc, order, alg);
-    res = (ibz_cmp(&disc, &(alg->p)) == 0);
+    res = quat_order_discriminant(&disc, order, alg) && ibz_cmp(&disc, &alg->p) == 0;
     ibz_finalize(&disc);
     return (res);
 }

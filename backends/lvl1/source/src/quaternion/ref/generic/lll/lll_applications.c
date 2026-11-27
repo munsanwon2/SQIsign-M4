@@ -3,6 +3,10 @@
 #include <stdint.h>
 #include "lll_internals.h"
 
+#if defined(TARGET_ARM)
+#include <sqisign_m4_workspace.h>
+#endif
+
 int
 quat_lideal_reduce_basis(ibz_mat_4x4_t *reduced,
                          ibz_mat_4x4_t *gram,
@@ -52,18 +56,17 @@ quat_lideal_lideal_mul_reduced(quat_left_ideal_t *prod,
     ibz_mat_4x4_init(&candidate_gram);
     quat_left_ideal_init(&candidate_prod);
 
-    if (!quat_lattice_mul(&candidate_prod.lattice,
-                          &(lideal1->lattice),
-                          &(lideal2->lattice),
-                          alg,
-                          (&lideal1->norm),
-                          &(lideal2->norm))) {
+    quat_lattice_t right_order;
+    if (lideal2->parent_order == NULL ||
+        !quat_lideal_right_order(&right_order, lideal1, alg) ||
+        !quat_lattice_equal(&right_order, lideal2->parent_order) ||
+        !ibz_mul_checked(&candidate_prod.norm, &lideal1->norm, &lideal2->norm) ||
+        ibz_cmp(&candidate_prod.norm, &ibz_const_zero) <= 0 ||
+        !quat_lattice_mul_mlll(&candidate_prod.lattice, &lideal1->lattice, &lideal2->lattice, alg))
         goto cleanup;
-    }
 
     candidate_prod.parent_order = lideal1->parent_order;
-    if (!quat_lideal_norm(&candidate_prod) ||
-        !quat_lideal_reduce_basis(&red, &candidate_gram, &candidate_prod, alg))
+    if (!quat_lideal_reduce_basis(&red, &candidate_gram, &candidate_prod, alg))
         goto cleanup;
     ibz_mat_4x4_copy(&candidate_prod.lattice.basis, &red);
 
@@ -84,17 +87,26 @@ quat_lideal_prime_norm_reduced_equivalent(quat_left_ideal_t *lideal,
                                           const int primality_num_iter,
                                           const int equiv_bound_coeff)
 {
-    ibz_mat_4x4_t gram, red;
-    ibz_mat_4x4_init(&gram);
-    ibz_mat_4x4_init(&red);
+    if (primality_num_iter <= 0 || equiv_bound_coeff < 0)
+        return 0;
 
+    /* Keep both reduced-basis matrices out of the arithmetic call stack.
+     * The only nested ML2 operation here has four generators. */
+#if defined(TARGET_ARM)
+    ibz_mat_4x4_t *matrices = sqisign_m4_workspace_acquire(2 * sizeof(*matrices));
+    if (matrices == NULL)
+        return 0;
+#else
+    ibz_mat_4x4_t matrices[2];
+#endif
+    ibz_mat_4x4_t *const gram = &matrices[0];
+    ibz_mat_4x4_t *const red = &matrices[1];
+    ibz_mat_4x4_init(gram);
+    ibz_mat_4x4_init(red);
     int found = 0;
 
-    if (primality_num_iter <= 0 || equiv_bound_coeff < 0)
-        goto cleanup_matrices;
-
     // computing the reduced basis
-    if (!quat_lideal_reduce_basis(&red, &gram, lideal, alg))
+    if (!quat_lideal_reduce_basis(red, gram, lideal, alg))
         goto cleanup_matrices;
 
     quat_alg_elem_t new_alpha;
@@ -127,7 +139,7 @@ quat_lideal_prime_norm_reduced_equivalent(quat_left_ideal_t *lideal,
             goto cleanup;
 
         // computation of the norm of the vector sampled
-        quat_qf_eval(&tmp, &gram, &new_alpha.coord);
+        quat_qf_eval(&tmp, gram, &new_alpha.coord);
 
         // compute the norm of the equivalent ideal
         // can be improved by removing the power of two first and the odd part only if the trial
@@ -143,7 +155,7 @@ quat_lideal_prime_norm_reduced_equivalent(quat_left_ideal_t *lideal,
         if (ibz_probab_prime(&tmp, primality_num_iter)) {
 
             // computes the generator using a matrix multiplication
-            ibz_mat_4x4_eval(&new_alpha.coord, &red, &new_alpha.coord);
+            ibz_mat_4x4_eval(&new_alpha.coord, red, &new_alpha.coord);
             ibz_copy(&new_alpha.denom, &lideal->lattice.denom);
             if (!quat_lattice_contains(NULL, &lideal->lattice, &new_alpha))
                 goto cleanup;
@@ -173,8 +185,11 @@ cleanup:
     quat_alg_elem_finalize(&new_alpha);
 
 cleanup_matrices:
-    ibz_mat_4x4_finalize(&gram);
-    ibz_mat_4x4_finalize(&red);
+    ibz_mat_4x4_finalize(gram);
+    ibz_mat_4x4_finalize(red);
+#if defined(TARGET_ARM)
+    sqisign_m4_workspace_release(matrices);
+#endif
 
     return found;
 }

@@ -23,13 +23,13 @@
  * @{
  */
 
-#define DELTABAR 0.995
-#define DELTA_NUM 99
-#define DELTA_DENOM 100
+#define DELTABAR 0x1.cp-1 /* 7/8 */
+#define DELTA_NUM 43
+#define DELTA_DENOM 50
 
-#define ETABAR 0.505
+#define ETABAR 0x1.0cccccccccccdp-1 /* RN((RN(0.55) + 1/2)/2) */
 #define EPSILON_NUM 1
-#define EPSILON_DENOM 100
+#define EPSILON_DENOM 20
 
 #define PREC 64
 /**
@@ -184,6 +184,13 @@ int quat_ml2_mlll_with_reducer(ibz_vec_4_t *output,
                                int d,
                                const quat_alg_t *alg,
                                quat_ml2_reducer_t reducer);
+
+/* Reduce the 16 ordered products of two already shortened column bases.
+ * Output vectors are rows and are published only on rank-four success. */
+int quat_ml2_retry_products(ibz_mat_4x4_t *output,
+                            const ibz_mat_4x4_t *left,
+                            const ibz_mat_4x4_t *right,
+                            const quat_alg_t *alg);
 
 int quat_ml2_retry(ibz_vec_4_t *output,
                    int out_capacity,

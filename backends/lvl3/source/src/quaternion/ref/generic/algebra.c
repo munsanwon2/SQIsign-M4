@@ -169,121 +169,104 @@ quat_alg_mul(quat_alg_elem_t *res, const quat_alg_elem_t *a, const quat_alg_elem
 int
 quat_alg_norm_mod(ibz_t *res, const quat_alg_elem_t *x, const ibz_t *N, const quat_alg_t *alg)
 {
-    /* paper Issue 14: nrd(x) mod N = (x0^2 + x1^2 + p*x2^2 + p*x3^2) mod N
-     * with each ibz_mul reduced before the next operation. Max transient
-     * is max(2*log2(N), p_bits + log2(N)), matching paper Lemma 4N^2 when N >= p. */
-    if (!ibz_is_one(&(x->denom)) || ibz_cmp(N, &ibz_const_zero) <= 0) {
-        ibz_set(res, 0);
+    if (!ibz_is_one(&x->denom) || ibz_cmp(N, &ibz_const_zero) <= 0 ||
+        2 * ibz_bitsize(N) + 2 > IBZ_BITS - 1)
         return 0;
+
+    ibz_t result = { 0 }, term, pmod;
+    ibz_mod(&pmod, &alg->p, N);
+    for (int i = 0; i < 4; i++) {
+        ibz_mod(&term, &x->coord[i], N);
+        ibz_mul(&term, &term, &term);
+        ibz_mod(&term, &term, N);
+        if (i >= 2) {
+            ibz_mul(&term, &term, &pmod);
+            ibz_mod(&term, &term, N);
+        }
+        ibz_add(&result, &result, &term);
     }
-    ibz_t tmp;
-    ibz_init(&tmp);
-
-    /* res = x0^2 mod N */
-    ibz_mul(res, &(x->coord[0]), &(x->coord[0]));
-    ibz_mod(res, res, N);
-
-    /* res += x1^2 mod N */
-    ibz_mul(&tmp, &(x->coord[1]), &(x->coord[1]));
-    ibz_mod(&tmp, &tmp, N);
-    ibz_add(res, res, &tmp);
-
-    /* res += p * (x2^2 mod N) mod N */
-    ibz_mul(&tmp, &(x->coord[2]), &(x->coord[2]));
-    ibz_mod(&tmp, &tmp, N);
-    ibz_mul(&tmp, &tmp, &(alg->p));
-    ibz_mod(&tmp, &tmp, N);
-    ibz_add(res, res, &tmp);
-
-    /* res += p * (x3^2 mod N) mod N */
-    ibz_mul(&tmp, &(x->coord[3]), &(x->coord[3]));
-    ibz_mod(&tmp, &tmp, N);
-    ibz_mul(&tmp, &tmp, &(alg->p));
-    ibz_mod(&tmp, &tmp, N);
-    ibz_add(res, res, &tmp);
-
-    ibz_mod(res, res, N);
-
-    ibz_finalize(&tmp);
+    ibz_mod(res, &result, N);
     return 1;
 }
 
 int
 quat_alg_mul_mod(quat_alg_elem_t *res, const quat_alg_elem_t *a, const quat_alg_elem_t *b, const ibz_t *N, const quat_alg_t *alg)
 {
-    /* paper Issue 14: (a*b) mod N*O_0 — coords computed with each ibz_mul
-     * followed by ibz_mod, max transient = max(2*log2(N), p_bits + log2(N)).
-     * Use a local sum[4] so aliasing res==a or res==b is safe. */
-    if (!ibz_is_one(&(a->denom)) || !ibz_is_one(&(b->denom)) ||
-        ibz_cmp(N, &ibz_const_zero) <= 0)
+    /* For integral ambient coordinates, a congruence modulo N Z^4 is
+     * also a congruence modulo N O0. Reduce all inputs before multiplying. */
+    if (!ibz_is_one(&a->denom) || !ibz_is_one(&b->denom) ||
+        ibz_cmp(N, &ibz_const_zero) <= 0 || 2 * ibz_bitsize(N) + 2 > IBZ_BITS - 1)
         return 0;
-    ibz_t prod;
-    ibz_vec_4_t sum;
-    ibz_init(&prod);
-    ibz_vec_4_init(&sum);
+    ibz_t prod, pmod;
+    ibz_vec_4_t sum = { 0 }, left, right;
+    ibz_mod(&pmod, &alg->p, N);
+    for (int i = 0; i < 4; i++) {
+        ibz_mod(&left[i], &a->coord[i], N);
+        ibz_mod(&right[i], &b->coord[i], N);
+    }
 
     /* sum[0] = a[0]*b[0] - a[1]*b[1] - p*(a[2]*b[2] + a[3]*b[3]) */
-    ibz_mul(&prod, &(a->coord[2]), &(b->coord[2]));
+    ibz_mul(&prod, &left[2], &right[2]);
     ibz_mod(&prod, &prod, N);
     ibz_sub(&sum[0], &sum[0], &prod);
-    ibz_mul(&prod, &(a->coord[3]), &(b->coord[3]));
+    ibz_mul(&prod, &left[3], &right[3]);
     ibz_mod(&prod, &prod, N);
     ibz_sub(&sum[0], &sum[0], &prod);
     ibz_mod(&sum[0], &sum[0], N);
-    ibz_mul(&sum[0], &sum[0], &(alg->p));
+    ibz_mul(&sum[0], &sum[0], &pmod);
     ibz_mod(&sum[0], &sum[0], N);
-    ibz_mul(&prod, &(a->coord[0]), &(b->coord[0]));
+    ibz_mul(&prod, &left[0], &right[0]);
     ibz_mod(&prod, &prod, N);
     ibz_add(&sum[0], &sum[0], &prod);
-    ibz_mul(&prod, &(a->coord[1]), &(b->coord[1]));
+    ibz_mul(&prod, &left[1], &right[1]);
     ibz_mod(&prod, &prod, N);
     ibz_sub(&sum[0], &sum[0], &prod);
     ibz_mod(&sum[0], &sum[0], N);
 
     /* sum[1] = a[0]*b[1] + a[1]*b[0] + p*(a[2]*b[3] - a[3]*b[2]) */
-    ibz_mul(&prod, &(a->coord[2]), &(b->coord[3]));
+    ibz_mul(&prod, &left[2], &right[3]);
     ibz_mod(&prod, &prod, N);
     ibz_add(&sum[1], &sum[1], &prod);
-    ibz_mul(&prod, &(a->coord[3]), &(b->coord[2]));
+    ibz_mul(&prod, &left[3], &right[2]);
     ibz_mod(&prod, &prod, N);
     ibz_sub(&sum[1], &sum[1], &prod);
     ibz_mod(&sum[1], &sum[1], N);
-    ibz_mul(&sum[1], &sum[1], &(alg->p));
+    ibz_mul(&sum[1], &sum[1], &pmod);
     ibz_mod(&sum[1], &sum[1], N);
-    ibz_mul(&prod, &(a->coord[0]), &(b->coord[1]));
+    ibz_mul(&prod, &left[0], &right[1]);
     ibz_mod(&prod, &prod, N);
     ibz_add(&sum[1], &sum[1], &prod);
-    ibz_mul(&prod, &(a->coord[1]), &(b->coord[0]));
+    ibz_mul(&prod, &left[1], &right[0]);
     ibz_mod(&prod, &prod, N);
     ibz_add(&sum[1], &sum[1], &prod);
     ibz_mod(&sum[1], &sum[1], N);
 
     /* sum[2] = a[0]*b[2] + a[2]*b[0] - a[1]*b[3] + a[3]*b[1] */
-    ibz_mul(&prod, &(a->coord[0]), &(b->coord[2]));
+    ibz_mul(&prod, &left[0], &right[2]);
     ibz_mod(&prod, &prod, N);
     ibz_add(&sum[2], &sum[2], &prod);
-    ibz_mul(&prod, &(a->coord[2]), &(b->coord[0]));
+    ibz_mul(&prod, &left[2], &right[0]);
     ibz_mod(&prod, &prod, N);
     ibz_add(&sum[2], &sum[2], &prod);
-    ibz_mul(&prod, &(a->coord[1]), &(b->coord[3]));
+    ibz_mul(&prod, &left[1], &right[3]);
     ibz_mod(&prod, &prod, N);
     ibz_sub(&sum[2], &sum[2], &prod);
-    ibz_mul(&prod, &(a->coord[3]), &(b->coord[1]));
+    ibz_mul(&prod, &left[3], &right[1]);
     ibz_mod(&prod, &prod, N);
     ibz_add(&sum[2], &sum[2], &prod);
     ibz_mod(&sum[2], &sum[2], N);
 
-    /* sum[3] = a[0]*b[3] + a[3]*b[0] - a[2]*b[1] + a[1]*b[2] */
-    ibz_mul(&prod, &(a->coord[0]), &(b->coord[3]));
+    /* sum[3] = a[0]*b[3] + a[3]*b[0] - a[2]*b[1] + a[1]*b[2]) */
+    ibz_mul(&prod, &left[0], &right[3]);
     ibz_mod(&prod, &prod, N);
     ibz_add(&sum[3], &sum[3], &prod);
-    ibz_mul(&prod, &(a->coord[3]), &(b->coord[0]));
+    ibz_mul(&prod, &left[3], &right[0]);
     ibz_mod(&prod, &prod, N);
     ibz_add(&sum[3], &sum[3], &prod);
-    ibz_mul(&prod, &(a->coord[2]), &(b->coord[1]));
+    ibz_mul(&prod, &left[2], &right[1]);
     ibz_mod(&prod, &prod, N);
     ibz_sub(&sum[3], &sum[3], &prod);
-    ibz_mul(&prod, &(a->coord[1]), &(b->coord[2]));
+    ibz_mul(&prod, &left[1], &right[2]);
     ibz_mod(&prod, &prod, N);
     ibz_add(&sum[3], &sum[3], &prod);
     ibz_mod(&sum[3], &sum[3], N);
@@ -298,34 +281,32 @@ quat_alg_mul_mod(quat_alg_elem_t *res, const quat_alg_elem_t *a, const quat_alg_
 }
 
 int
+quat_alg_coord_norm(ibz_t *norm, const ibz_vec_4_t *coord, const quat_alg_t *alg)
+{
+    ibz_t value = { 0 }, term;
+    for (int i = 0; i < 4; i++) {
+        if (!ibz_mul_checked(&term, &(*coord)[i], &(*coord)[i]) ||
+            (i >= 2 && !ibz_mul_checked(&term, &term, &alg->p)) ||
+            !ibz_add_checked(&value, &value, &term))
+            return 0;
+    }
+    ibz_copy(norm, &value);
+    return 1;
+}
+
+int
 quat_alg_norm(ibz_t *res_num, ibz_t *res_denom, const quat_alg_elem_t *a, const quat_alg_t *alg)
 {
     int ok = 0;
     ibz_t r, g, num, denom;
-    ibz_init(&r);
-    ibz_init(&g);
-    ibz_init(&num);
-    ibz_init(&denom);
 
     if (res_num == NULL || res_denom == NULL || a == NULL || alg == NULL ||
         ibz_is_zero(&a->denom) || ibz_cmp(&alg->p, &ibz_const_zero) <= 0)
         goto cleanup;
 
-    /* nrd(x0+x1*i+x2*j+x3*ij) =
-     * x0^2+x1^2+p*(x2^2+x3^2).  This is exactly the scalar coordinate of
-     * a*conj(a), without constructing a conjugate or the three identically
-     * zero imaginary coordinates.  Keep the former scalar-coordinate order
-     * so fixed-precision intermediate bounds are unchanged. */
-    ibz_mul(&num, &a->coord[2], &a->coord[2]);
-    ibz_mul(&r, &a->coord[3], &a->coord[3]);
-    ibz_add(&num, &num, &r);
-    ibz_mul(&num, &num, &alg->p);
-    ibz_mul(&r, &a->coord[0], &a->coord[0]);
-    ibz_add(&num, &num, &r);
-    ibz_mul(&r, &a->coord[1], &a->coord[1]);
-    ibz_add(&num, &num, &r);
-    ibz_mul(&denom, &a->denom, &a->denom);
-
+    if (!quat_alg_coord_norm(&num, &a->coord, alg) ||
+        !ibz_mul_checked(&denom, &a->denom, &a->denom))
+        goto cleanup;
     ibz_gcd(&g, &num, &denom);
     if (ibz_is_zero(&g))
         goto cleanup;

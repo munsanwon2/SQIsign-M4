@@ -26,7 +26,7 @@ import tempfile
 
 SCHEMA_VERSION = 2
 TRANSLATION_UNIT_SUFFIXES = {".c", ".s", ".S"}
-HEADER_SUFFIXES = {".h"}
+HEADER_SUFFIXES = {".h", ".inc"}
 LEVELS = (1, 3, 5)
 
 PQM4_EXCLUSIONS = {
@@ -77,7 +77,11 @@ DEFINE_FRAGMENT = re.compile(r"(?:^|\s)-D([A-Za-z_][A-Za-z0-9_]*(?:=[^\s]+)?)")
 # target-independent options with source-level semantic relevance cross the
 # export boundary.  The complete CMake option set remains recorded for audit.
 PQM4_COMPILE_OPTION_ALLOWLIST = {
+    "-fexcess-precision=standard",
+    "-ffp-contract=off",
+    "-fno-fast-math",
     "-fno-strict-aliasing",
+    "-frounding-math",
     "-fvisibility=hidden",
     "-funroll-loops",
 }
@@ -410,7 +414,7 @@ def manifest_for_level(
     pqm4_definitions = sorted(
         definition
         for definition in definitions
-        if definition != "RANDOMBYTES_SYSTEM"
+        if definition.split("=", 1)[0] not in {"RANDOMBYTES_SYSTEM", "HAVE_UINT128"}
         and not definition.startswith("SQISIGN_TEST_REPS=")
     )
     pqm4_compile_options = sorted(
@@ -448,7 +452,7 @@ def manifest_for_level(
         "pqm4_compile_include_directories": include_records,
         "pqm4_compile_policy": {
             "definitions": (
-                "CMake target-closure definitions except host RNG and test-count macros"
+                "CMake target-closure definitions except host RNG, native int128 probe, and test macros"
             ),
             "options": (
                 "only target-independent semantic options; pqm4 retains ownership of "

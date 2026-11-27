@@ -1,5 +1,9 @@
 # Upstream revisions used while preparing this release.
-compact-SQIsign https://github.com/pqc-lab-ku/compact-SQIsign.git 5b94b09a1dbbdcc8b91749fec83a9f111ef9cce3
+# Field kernels and generated input: compact-SQIsign, followed by the local
+# full-backend-tools/compact-cortex-m4.patch and O0 selection in rebuild_compact_exports.py.
+compact-SQIsign https://github.com/pqc-lab-ku/compact-SQIsign.git e4330baba705707a58b77a46fea43f0281bd121d
+# Cortex-M4 Qlapoti, fixed-width optimizations, and original correctness fixes.
+SQIsign-M4-base https://github.com/munsanwon2/SQIsign-M4.git a83101a14380e9c05ac878a31b7effa3c89056f9
 Qlapoti https://github.com/KULeuven-COSIC/Qlapoti.git bd8758d390fd8bdc0ed7a5f6ed299fc036b8f8b4
 SQIsign https://github.com/SQIsign/the-sqisign.git dd133d7aca576c361a270c8e6434832535b42ecc
 SQIsign-vectorization https://github.com/LeeJ-art/the-sqisign-vectorization.git 4585fdee33323c423b79f4d218253a74b170c0af

@@ -152,7 +152,7 @@ ctz64(uint64_t x)
 static void
 mul64_128(uint64_t a, uint64_t b, uint64_t *hi, uint64_t *lo)
 {
-#if defined(HAVE_UINT128)
+#if defined(__SIZEOF_INT128__)
     __uint128_t product = (__uint128_t)a * b;
     *lo = (uint64_t)product;
     *hi = (uint64_t)(product >> 64);
@@ -199,7 +199,7 @@ ibz_mul_unsigned_wide(uint64_t product[2 * IBZ_LIMBS],
         if (a[i] == 0)
             continue;
 
-#if defined(HAVE_UINT128)
+#if defined(__SIZEOF_INT128__)
         uint64_t carry = 0;
         for (size_t j = 0; j < b_size; ++j) {
             const size_t index = i + j;
@@ -252,7 +252,6 @@ ibz_mul_unsigned_wide(uint64_t product[2 * IBZ_LIMBS],
     }
 }
 
-#if !defined(SQISIGN_INTBIG_OVERFLOW_CHECK)
 /* Low half of an unsigned product.  Production arithmetic is defined at the
  * fixed precision and consumes only these limbs; computing and storing the
  * discarded upper triangle doubled both work and stack on Cortex-M4. */
@@ -301,13 +300,36 @@ ibz_mul_unsigned_low(ibz_t *product,
         }
     }
 }
-#endif
 
-#if defined(HAVE_UINT128)
-/* Knuth-style normalized long division in base 2^64.  The dividend may be a
- * regular fixed-width value or a full 2N-limb multiplication result.  Only
- * the remainder is required by wide modular multiplication, so quotient may
- * be NULL. */
+#if defined(__SIZEOF_INT128__)
+typedef uint64_t ibz_div_word_t;
+typedef __uint128_t ibz_div_wide_t;
+#define IBZ_DIV_WORD_BITS 64
+#else
+typedef uint32_t ibz_div_word_t;
+typedef uint64_t ibz_div_wide_t;
+#define IBZ_DIV_WORD_BITS 32
+#endif
+#define IBZ_DIV_WORDS_PER_LIMB (64 / IBZ_DIV_WORD_BITS)
+#define IBZ_DIV_WORDS (IBZ_LIMBS * IBZ_DIV_WORDS_PER_LIMB)
+
+static ibz_div_word_t
+ibz_div_get_word(const uint64_t *limbs, size_t index)
+{
+    return (ibz_div_word_t)(limbs[index / IBZ_DIV_WORDS_PER_LIMB] >>
+                           ((index % IBZ_DIV_WORDS_PER_LIMB) * IBZ_DIV_WORD_BITS));
+}
+
+/* Each word is written once into an initially zeroed limb array. */
+static void
+ibz_div_put_word(uint64_t *limbs, size_t index, ibz_div_word_t word)
+{
+    limbs[index / IBZ_DIV_WORDS_PER_LIMB] |=
+        (uint64_t)word << ((index % IBZ_DIV_WORDS_PER_LIMB) * IBZ_DIV_WORD_BITS);
+}
+
+/* Knuth-style normalized division of at most 2N limbs by at most N limbs.
+ * Quotient may be NULL when only the full-product remainder is required. */
 static void
 ibz_divrem_unsigned_wide(uint64_t quotient[2 * IBZ_LIMBS],
                          uint64_t remainder[IBZ_LIMBS],
@@ -315,125 +337,119 @@ ibz_divrem_unsigned_wide(uint64_t quotient[2 * IBZ_LIMBS],
                          size_t dividend_capacity,
                          const uint64_t divisor[IBZ_LIMBS])
 {
-    uint64_t u[2 * IBZ_LIMBS + 1];
-    uint64_t v[IBZ_LIMBS];
-    const size_t dividend_size = ibz_used_limbs(dividend, dividend_capacity);
-    const size_t divisor_size = ibz_used_limbs(divisor, IBZ_LIMBS);
+    ibz_div_word_t u[2 * IBZ_DIV_WORDS + 1] = { 0 };
+    ibz_div_word_t v[IBZ_DIV_WORDS] = { 0 };
+    size_t dividend_size = dividend_capacity * IBZ_DIV_WORDS_PER_LIMB;
+    size_t divisor_size = IBZ_DIV_WORDS;
+    for (size_t i = 0; i < dividend_size; ++i)
+        u[i] = ibz_div_get_word(dividend, i);
+    for (size_t i = 0; i < divisor_size; ++i)
+        v[i] = ibz_div_get_word(divisor, i);
+    while (dividend_size > 0 && u[dividend_size - 1] == 0)
+        --dividend_size;
+    while (divisor_size > 0 && v[divisor_size - 1] == 0)
+        --divisor_size;
 
     if (divisor_size == 0)
         ibz_division_by_zero_abort("division");
-
     if (quotient != NULL)
         memset(quotient, 0, 2 * IBZ_LIMBS * sizeof(*quotient));
     memset(remainder, 0, IBZ_LIMBS * sizeof(*remainder));
-
     if (dividend_size == 0)
         return;
     if (dividend_size < divisor_size) {
-        memcpy(remainder, dividend, dividend_size * sizeof(*remainder));
+        for (size_t i = 0; i < dividend_size; ++i)
+            ibz_div_put_word(remainder, i, u[i]);
         return;
     }
 
     if (divisor_size == 1) {
-        uint64_t carry = 0;
+        ibz_div_word_t carry = 0;
         for (size_t i = dividend_size; i-- > 0;) {
-            __uint128_t numerator = ((__uint128_t)carry << 64) | dividend[i];
+            ibz_div_wide_t numerator = ((ibz_div_wide_t)carry << IBZ_DIV_WORD_BITS) | u[i];
             if (quotient != NULL)
-                quotient[i] = (uint64_t)(numerator / divisor[0]);
-            carry = (uint64_t)(numerator % divisor[0]);
+                ibz_div_put_word(quotient, i, (ibz_div_word_t)(numerator / v[0]));
+            carry = (ibz_div_word_t)(numerator % v[0]);
         }
         remainder[0] = carry;
         return;
     }
 
-    memset(u, 0, sizeof(u));
-    memset(v, 0, sizeof(v));
-
-    const unsigned int normalization = (unsigned int)clz64(divisor[divisor_size - 1]);
-    if (normalization == 0) {
-        memcpy(v, divisor, divisor_size * sizeof(*v));
-        memcpy(u, dividend, dividend_size * sizeof(*u));
-    } else {
-        uint64_t carry = 0;
+    const unsigned int normalization =
+        (unsigned int)clz64(v[divisor_size - 1]) - (64 - IBZ_DIV_WORD_BITS);
+    if (normalization != 0) {
+        ibz_div_word_t carry = 0;
         for (size_t i = 0; i < divisor_size; ++i) {
-            const uint64_t limb = divisor[i];
-            v[i] = (limb << normalization) | carry;
-            carry = limb >> (64 - normalization);
+            const ibz_div_word_t word = v[i];
+            v[i] = (word << normalization) | carry;
+            carry = word >> (IBZ_DIV_WORD_BITS - normalization);
         }
-
         carry = 0;
         for (size_t i = 0; i < dividend_size; ++i) {
-            const uint64_t limb = dividend[i];
-            u[i] = (limb << normalization) | carry;
-            carry = limb >> (64 - normalization);
+            const ibz_div_word_t word = u[i];
+            u[i] = (word << normalization) | carry;
+            carry = word >> (IBZ_DIV_WORD_BITS - normalization);
         }
         u[dividend_size] = carry;
     }
 
     const size_t quotient_size = dividend_size - divisor_size + 1;
-    const uint64_t divisor_top = v[divisor_size - 1];
+    const ibz_div_word_t divisor_top = v[divisor_size - 1];
     for (size_t position = quotient_size; position-- > 0;) {
         const size_t top = position + divisor_size;
-        uint64_t qhat;
-        uint64_t rhat;
+        ibz_div_word_t qhat, rhat;
         int rhat_overflow = 0;
-
         if (u[top] >= divisor_top) {
-            qhat = UINT64_MAX;
-            __uint128_t sum = (__uint128_t)u[top - 1] + divisor_top;
-            rhat = (uint64_t)sum;
-            rhat_overflow = (int)(sum >> 64);
+            qhat = (ibz_div_word_t)-1;
+            ibz_div_wide_t sum = (ibz_div_wide_t)u[top - 1] + divisor_top;
+            rhat = (ibz_div_word_t)sum;
+            rhat_overflow = (int)(sum >> IBZ_DIV_WORD_BITS);
         } else {
-            __uint128_t numerator = ((__uint128_t)u[top] << 64) | u[top - 1];
-            qhat = (uint64_t)(numerator / divisor_top);
-            rhat = (uint64_t)(numerator % divisor_top);
+            ibz_div_wide_t numerator = ((ibz_div_wide_t)u[top] << IBZ_DIV_WORD_BITS) | u[top - 1];
+            qhat = (ibz_div_word_t)(numerator / divisor_top);
+            rhat = (ibz_div_word_t)(numerator % divisor_top);
         }
-
         while (!rhat_overflow &&
-               (__uint128_t)qhat * v[divisor_size - 2] >
-                   ((__uint128_t)rhat << 64) + u[top - 2]) {
+               (ibz_div_wide_t)qhat * v[divisor_size - 2] >
+                   ((ibz_div_wide_t)rhat << IBZ_DIV_WORD_BITS) + u[top - 2]) {
             --qhat;
-            __uint128_t sum = (__uint128_t)rhat + divisor_top;
-            rhat = (uint64_t)sum;
-            rhat_overflow = (int)(sum >> 64);
+            ibz_div_wide_t sum = (ibz_div_wide_t)rhat + divisor_top;
+            rhat = (ibz_div_word_t)sum;
+            rhat_overflow = (int)(sum >> IBZ_DIV_WORD_BITS);
         }
 
-        uint64_t borrow = 0;
+        ibz_div_word_t borrow = 0;
         for (size_t i = 0; i < divisor_size; ++i) {
-            __uint128_t subtrahend = (__uint128_t)qhat * v[i] + borrow;
-            const uint64_t low = (uint64_t)subtrahend;
-            const uint64_t high = (uint64_t)(subtrahend >> 64);
-            const uint64_t old = u[position + i];
+            ibz_div_wide_t subtrahend = (ibz_div_wide_t)qhat * v[i] + borrow;
+            const ibz_div_word_t low = (ibz_div_word_t)subtrahend;
+            const ibz_div_word_t high = (ibz_div_word_t)(subtrahend >> IBZ_DIV_WORD_BITS);
+            const ibz_div_word_t old = u[position + i];
             u[position + i] = old - low;
             borrow = high + (old < low);
         }
-
-        const uint64_t old_top = u[top];
+        const ibz_div_word_t old_top = u[top];
         u[top] = old_top - borrow;
         if (old_top < borrow) {
             --qhat;
-            uint64_t carry = 0;
+            ibz_div_word_t carry = 0;
             for (size_t i = 0; i < divisor_size; ++i) {
-                __uint128_t sum = (__uint128_t)u[position + i] + v[i] + carry;
-                u[position + i] = (uint64_t)sum;
-                carry = (uint64_t)(sum >> 64);
+                ibz_div_wide_t sum = (ibz_div_wide_t)u[position + i] + v[i] + carry;
+                u[position + i] = (ibz_div_word_t)sum;
+                carry = (ibz_div_word_t)(sum >> IBZ_DIV_WORD_BITS);
             }
             u[top] += carry;
         }
-
         if (quotient != NULL)
-            quotient[position] = qhat;
+            ibz_div_put_word(quotient, position, qhat);
     }
 
-    if (normalization == 0) {
-        memcpy(remainder, u, divisor_size * sizeof(*remainder));
-    } else {
-        for (size_t i = 0; i < divisor_size; ++i)
-            remainder[i] = (u[i] >> normalization) |
-                           (u[i + 1] << (64 - normalization));
+    for (size_t i = 0; i < divisor_size; ++i) {
+        ibz_div_word_t word = u[i];
+        if (normalization != 0)
+            word = (word >> normalization) | (u[i + 1] << (IBZ_DIV_WORD_BITS - normalization));
+        ibz_div_put_word(remainder, i, word);
     }
 }
-#endif
 
 // Initialize/finalize
 void
@@ -457,7 +473,9 @@ ibz_finalize(ibz_t *x)
 void
 ibz_copy(ibz_t *target, const ibz_t *value)
 {
-    memcpy(*target, *value, sizeof(ibz_t));
+    /* In-place arithmetic routinely copies an integer onto itself. */
+    if (target != value)
+        memcpy(*target, *value, sizeof(ibz_t));
 }
 
 void
@@ -602,7 +620,7 @@ ibz_shift_left_unsigned(ibz_t *result, const ibz_t *a, uint32_t shift)
         (*result)[i] = 0;
 }
 
-#if !defined(HAVE_UINT128)
+#if !defined(__SIZEOF_INT128__)
 /* Return a base-2^32 digit without aliasing ibz_t through a uint32_t pointer.
  * Splitting the numeric uint64_t limb also makes this independent of host
  * byte order. */
@@ -719,7 +737,7 @@ ibz_div_unsigned(ibz_t *quotient,
         return;
     }
 
-#if defined(HAVE_UINT128)
+#if defined(__SIZEOF_INT128__)
     uint64_t q_wide[2 * IBZ_LIMBS];
     uint64_t r_words[IBZ_LIMBS];
     ibz_divrem_unsigned_wide(quotient != NULL ? q_wide : NULL,
@@ -953,14 +971,9 @@ ibz_abs(ibz_t *abs, const ibz_t *a)
     ibz_abs_unsigned(abs, a);
 }
 
-// Addition
-void
-ibz_add(ibz_t *sum, const ibz_t *a, const ibz_t *b)
+static void
+ibz_add_raw(ibz_t *sum, const ibz_t *a, const ibz_t *b)
 {
-#if defined(SQISIGN_INTBIG_OVERFLOW_CHECK)
-    int a_negative = ibz_is_negative(a);
-    int b_negative = ibz_is_negative(b);
-#endif
     uint64_t carry = 0;
     for (int i = 0; i < IBZ_LIMBS; i++) {
         uint64_t tmp = (*a)[i] + carry;
@@ -968,20 +981,11 @@ ibz_add(ibz_t *sum, const ibz_t *a, const ibz_t *b)
         (*sum)[i] = tmp + (*b)[i];
         carry += ((*sum)[i] < tmp) ? 1 : 0;
     }
-#if defined(SQISIGN_INTBIG_OVERFLOW_CHECK)
-    if (a_negative == b_negative && ibz_is_negative(sum) != a_negative)
-        ibz_overflow_abort("addition");
-#endif
 }
 
-// Subtraction
-void
-ibz_sub(ibz_t *diff, const ibz_t *a, const ibz_t *b)
+static void
+ibz_sub_raw(ibz_t *diff, const ibz_t *a, const ibz_t *b)
 {
-#if defined(SQISIGN_INTBIG_OVERFLOW_CHECK)
-    int a_negative = ibz_is_negative(a);
-    int b_negative = ibz_is_negative(b);
-#endif
     uint64_t borrow = 0;
     for (int i = 0; i < IBZ_LIMBS; i++) {
         uint64_t tmp = (*a)[i] - borrow;
@@ -990,9 +994,49 @@ ibz_sub(ibz_t *diff, const ibz_t *a, const ibz_t *b)
         borrow += (tmp2 > tmp) ? 1 : 0;
         (*diff)[i] = tmp2;
     }
+}
+
+int
+ibz_add_checked(ibz_t *sum, const ibz_t *a, const ibz_t *b)
+{
+    ibz_t candidate;
+    ibz_add_raw(&candidate, a, b);
+    if (ibz_is_negative(a) == ibz_is_negative(b) && ibz_is_negative(&candidate) != ibz_is_negative(a))
+        return 0;
+    ibz_copy(sum, &candidate);
+    return 1;
+}
+
+int
+ibz_sub_checked(ibz_t *diff, const ibz_t *a, const ibz_t *b)
+{
+    ibz_t candidate;
+    ibz_sub_raw(&candidate, a, b);
+    if (ibz_is_negative(a) != ibz_is_negative(b) && ibz_is_negative(&candidate) != ibz_is_negative(a))
+        return 0;
+    ibz_copy(diff, &candidate);
+    return 1;
+}
+
+void
+ibz_add(ibz_t *sum, const ibz_t *a, const ibz_t *b)
+{
 #if defined(SQISIGN_INTBIG_OVERFLOW_CHECK)
-    if (a_negative != b_negative && ibz_is_negative(diff) != a_negative)
+    if (!ibz_add_checked(sum, a, b))
+        ibz_overflow_abort("addition");
+#else
+    ibz_add_raw(sum, a, b);
+#endif
+}
+
+void
+ibz_sub(ibz_t *diff, const ibz_t *a, const ibz_t *b)
+{
+#if defined(SQISIGN_INTBIG_OVERFLOW_CHECK)
+    if (!ibz_sub_checked(diff, a, b))
         ibz_overflow_abort("subtraction");
+#else
+    ibz_sub_raw(diff, a, b);
 #endif
 }
 
@@ -1135,62 +1179,67 @@ ibz_sub(ibz_t *diff, const ibz_t *a, const ibz_t *b)
 //     }
 // }
 
+/* Capacity checks near the signed boundary need the full product.
+ * Keep that scratch out of the common low-product frame. */
+static INTBIG_NOINLINE int
+ibz_mul_unsigned_checked(ibz_t *prod, const ibz_t *a, size_t a_size,
+                         const ibz_t *b, size_t b_size, int negative)
+{
+    uint64_t wide[2 * IBZ_LIMBS];
+    ibz_mul_unsigned_wide(wide, *a, a_size, *b, b_size);
+    for (size_t i = IBZ_LIMBS; i < 2 * IBZ_LIMBS; i++) {
+        if (wide[i] != 0)
+            return 0;
+    }
+    const uint64_t sign_bit = UINT64_C(1) << 63;
+    if (wide[IBZ_LIMBS - 1] >= sign_bit) {
+        if (!negative || wide[IBZ_LIMBS - 1] != sign_bit)
+            return 0;
+        for (size_t i = 0; i < IBZ_LIMBS - 1; i++) {
+            if (wide[i] != 0)
+                return 0;
+        }
+    }
+    memcpy(*prod, wide, sizeof(*prod));
+    return 1;
+}
+
+static int
+ibz_mul_internal(ibz_t *prod, const ibz_t *a, const ibz_t *b, int checked)
+{
+    const int negative = ibz_is_negative(a) != ibz_is_negative(b);
+    ibz_t aa, bb;
+    ibz_abs_unsigned(&aa, a);
+    ibz_abs_unsigned(&bb, b);
+    const size_t a_size = ibz_used_limbs(aa, IBZ_LIMBS);
+    const size_t b_size = ibz_used_limbs(bb, IBZ_LIMBS);
+
+    if (checked && ibz_bitsize_unsigned(&aa) + ibz_bitsize_unsigned(&bb) >= IBZ_BITS) {
+        if (!ibz_mul_unsigned_checked(prod, &aa, a_size, &bb, b_size, negative))
+            return 0;
+    } else {
+        ibz_mul_unsigned_low(prod, aa, a_size, bb, b_size);
+    }
+    if (negative)
+        ibz_neg_raw(prod, prod);
+    return 1;
+}
+
+int
+ibz_mul_checked(ibz_t *prod, const ibz_t *a, const ibz_t *b)
+{
+    return ibz_mul_internal(prod, a, b, 1);
+}
+
 void
 ibz_mul(ibz_t *prod, const ibz_t *a, const ibz_t *b)
 {
-    /* aa and bb consume both inputs before prod is published, so they are
-     * also the alias copies when prod == a or prod == b. */
-    int a_neg = ibz_is_negative(a);
-    int b_neg = ibz_is_negative(b);
-    int neg = (a_neg != b_neg);
-
-    ibz_t aa, bb;
-    ibz_abs(&aa, a);
-    ibz_abs(&bb, b);
-
-    // Find actual sizes on |a|, |b|
-    size_t a_size = IBZ_LIMBS;
-    size_t b_size = IBZ_LIMBS;
-
-    while (a_size > 1 && aa[a_size - 1] == 0) a_size--;
-    while (b_size > 1 && bb[b_size - 1] == 0) b_size--;
-
 #if defined(SQISIGN_INTBIG_OVERFLOW_CHECK)
-    /* Checked builds need the high half to decide whether the mathematical
-     * signed result fits. */
-    uint64_t temp_result[2 * IBZ_LIMBS];
-    ibz_mul_unsigned_wide(temp_result, aa, a_size, bb, b_size);
-
-    {
-        int overflow = 0;
-        for (int i = IBZ_LIMBS; i < 2 * IBZ_LIMBS; i++)
-            overflow |= temp_result[i] != 0;
-
-        if (!neg) {
-            overflow |= (temp_result[IBZ_LIMBS - 1] >> 63) != 0;
-        } else if (temp_result[IBZ_LIMBS - 1] > (UINT64_C(1) << 63)) {
-            overflow = 1;
-        } else if (temp_result[IBZ_LIMBS - 1] == (UINT64_C(1) << 63)) {
-            for (int i = 0; i < IBZ_LIMBS - 1; i++)
-                overflow |= temp_result[i] != 0;
-        }
-
-        if (overflow)
-            ibz_overflow_abort("multiplication");
-    }
-
-    // write low limbs
-    for (int i = 0; i < IBZ_LIMBS; i++) {
-        (*prod)[i] = temp_result[i];
-    }
+    if (!ibz_mul_checked(prod, a, b))
+        ibz_overflow_abort("multiplication");
 #else
-    ibz_mul_unsigned_low(prod, aa, a_size, bb, b_size);
+    (void)ibz_mul_internal(prod, a, b, 0);
 #endif
-
-    // apply sign
-    if (neg && !ibz_is_zero(prod)) {
-        ibz_neg_raw(prod, prod);
-    }
 }
 
 // void
@@ -1911,10 +1960,10 @@ ibz_to_u32_digits_checked(uint32_t *target, size_t target_len, const ibz_t *a)
 void
 ibz_copy_u64_digits(ibz_t *a, const ibz_digit_t *digits, size_t len)
 {
-    ibz_init(a);
-    for (size_t i = 0; i < len && i < IBZ_LIMBS; i++) {
-        (*a)[i] = digits[i];
-    }
+    len = MIN(len, (size_t)IBZ_LIMBS);
+    if (len != 0)
+        memmove(*a, digits, len * sizeof(*digits));
+    memset(*a + len, 0, (IBZ_LIMBS - len) * sizeof(*digits));
 }
 
 // Copy from a little-endian 32-bit field/MP digit array.
@@ -2096,7 +2145,7 @@ ibz_mod_positive_magnitude(ibz_t *r, const ibz_t *a, const ibz_t *modulus)
     ibz_copy(r, &reduced);
 }
 
-#if !defined(HAVE_UINT128)
+#if !defined(__SIZEOF_INT128__)
 /* a,b are in [0, modulus); modulus is an unsigned positive magnitude. */
 static void
 ibz_add_mod_positive(ibz_t *sum,
@@ -2247,7 +2296,6 @@ ibz_mul_mod_positive(ibz_t *product,
                      const ibz_t *b,
                      const ibz_t *modulus)
 {
-#if defined(HAVE_UINT128)
     const size_t a_size = ibz_used_limbs(*a, IBZ_LIMBS);
     const size_t b_size = ibz_used_limbs(*b, IBZ_LIMBS);
     if (a_size == 0 || b_size == 0) {
@@ -2264,42 +2312,6 @@ ibz_mul_mod_positive(ibz_t *product,
                              a_size + b_size,
                              *modulus);
     memcpy(*product, reduced, sizeof(ibz_t));
-#else
-    const int a_bits = ibz_bitsize_unsigned(a);
-    const int b_bits = ibz_bitsize_unsigned(b);
-    if (a_bits == 0 || b_bits == 0) {
-        ibz_init(product);
-        return;
-    }
-
-    if (a_bits <= (IBZ_BITS - 1) - b_bits) {
-        ibz_t unreduced;
-        ibz_mul(&unreduced, a, b);
-        ibz_div_unsigned(NULL, product, &unreduced, modulus);
-        return;
-    }
-
-    const ibz_t *multiplicand = a;
-    const ibz_t *multiplier = b;
-    int multiplier_bits = b_bits;
-    if (a_bits < b_bits) {
-        multiplicand = b;
-        multiplier = a;
-        multiplier_bits = a_bits;
-    }
-
-    ibz_t result, addend;
-    ibz_init(&result);
-    ibz_copy(&addend, multiplicand);
-
-    for (int bit = 0; bit < multiplier_bits; ++bit) {
-        if ((((*multiplier)[bit / 64] >> (bit % 64)) & UINT64_C(1)) != 0)
-            ibz_add_mod_positive(&result, &result, &addend, modulus);
-        if (bit + 1 < multiplier_bits)
-            ibz_add_mod_positive(&addend, &addend, &addend, modulus);
-    }
-    ibz_copy(product, &result);
-#endif
 }
 
 // Power
@@ -2459,7 +2471,7 @@ ibz_pow_mod(ibz_t *pow, const ibz_t *x, const ibz_t *e, const ibz_t *m)
     if (exponent_bits == 0) {
         ibz_set(&result, 1);
     }
-#if !defined(HAVE_UINT128)
+#if !defined(__SIZEOF_INT128__)
     else if (ibz_is_odd(&modulus)) {
         const size_t words = ibz_used_words32(&modulus);
 

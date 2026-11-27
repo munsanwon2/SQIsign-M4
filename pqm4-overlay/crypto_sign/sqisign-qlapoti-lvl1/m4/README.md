@@ -7,7 +7,7 @@ bridge, and build configuration.
 The wrapper is intentionally source-injection based. Run
 `scripts/inject_scheme_backends.sh` to add the genuine fixed-precision
 compact-SQIsign + Qlapoti export and exactly one KeyGen/Sign/Verify binding.
-After injection, the audit requires the complete 9x29 field, EC, theta,
+After injection, the audit requires the complete 12x28 field, EC, theta,
 quaternion/Qlapoti, IdealToIsogeny, signature, and verification closure.
 
 The unpopulated overlay alone remains fail-closed at link time; it is a

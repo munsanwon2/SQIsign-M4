@@ -10,15 +10,17 @@
 #endif
 
 enum {
-    THETA_CHAIN_MAX_LENGTH = 512,
+    THETA_CHAIN_MAX_LENGTH = TORSION_EVEN_POWER,
     THETA_CHAIN_JAC_SLOTS = 8,
     THETA_CHAIN_THETA_SLOTS = 9,
     THETA_CHAIN_MAX_POINTS = 3
 };
 
-/* These four fixed arrays account for most of the theta-chain frame (25,920
- * bytes at level V).  The unchanged gluing strategy needs at most eight
- * Jacobian slots; the offline ordinary strategy needs at most nine theta
+_Static_assert(THETA_CHAIN_MAX_LENGTH <= (15u << (THETA_CHAIN_JAC_SLOTS - 2)),
+               "gluing schedule does not fit the Jacobian slots");
+
+/* The gluing strategy needs at most eight Jacobian slots; the bounded
+ * ordinary strategy uses at most nine theta
  * slots.  Cortex-M4 operations place them in the bounded CCM arena; host
  * builds deliberately retain automatic storage so independent signing
  * threads do not share mutable state. */
@@ -31,18 +33,10 @@ typedef struct theta_chain_workspace {
 } theta_chain_workspace_t;
 
 #ifdef TARGET_ARM
-#if BITS == 256
-_Static_assert(sizeof(theta_chain_workspace_t) == 12960,
-               "level-I theta-chain CCM workspace size changed");
-#elif BITS == 384
-_Static_assert(sizeof(theta_chain_workspace_t) == 20160,
-               "level-III theta-chain CCM workspace size changed");
-#elif BITS == 512
-_Static_assert(sizeof(theta_chain_workspace_t) == 25920,
-               "level-V theta-chain CCM workspace size changed");
-#else
-#error "unsupported field size for the audited theta-chain workspace"
-#endif
+_Static_assert(sizeof(theta_chain_workspace_t) == 360 * sizeof(fp_t),
+               "theta workspace changed; recheck its Cortex-M4 CCM budget");
+_Static_assert(sizeof(theta_chain_workspace_t) <= 34560u,
+               "theta workspace exceeds its Cortex-M4 CCM budget");
 #if defined(__GNUC__) || defined(__clang__)
 #define THETA_CHAIN_NOINLINE __attribute__((noinline))
 #else
@@ -1132,7 +1126,7 @@ theta_chain_compute_with_workspace(unsigned n,
 {
     /* Without extra torsion, n=1/2 make todo[0] invalid and n=3 reaches
      * the fixed tail without having populated thetaQ1[0]/thetaQ2[0]. */
-    if (n == 0 || n > THETA_CHAIN_MAX_LENGTH || E12 == NULL ||
+    if (n == 0 || n > THETA_CHAIN_MAX_LENGTH - HD_extra_torsion * extra_torsion || E12 == NULL ||
         ker == NULL || E34 == NULL || numP > THETA_CHAIN_MAX_POINTS ||
         (numP != 0 && P12 == NULL) || workspace == NULL ||
         (!extra_torsion && n < 4))

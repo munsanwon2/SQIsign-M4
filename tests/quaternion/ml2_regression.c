@@ -33,38 +33,81 @@ checked_dpe_div(dpe_t out, dpe_t numerator, dpe_t denominator)
 #include "lll/ml2.c"
 #undef dpe_div
 
-/* Check the small fixtures' size reduction and Lovasz inequalities using
- * an independent long-double Gram--Schmidt calculation.  Lattice equality
- * below is checked separately with exact fixed-width integer arithmetic. */
+static void
+check_gram_update(void)
+{
+    static const int coordinates[3][4] = {{1, -2, 3, 1}, {3, 0, -1, 2}, {7, -5, 2, 4}};
+    static const int coefficients[2] = {3, -2};
+    static const int metric[4] = {1, 1, 17, 17};
+    int gram[3][3] = {{0}}, products[3] = {0};
+    quat_alg_t alg;
+    quat_alg_init_set_ui(&alg, 17);
+    ml2_state_t state;
+    ml2_state_init(&state, 3, &alg);
+    for (int i = 0; i < 3; ++i) {
+        for (int c = 0; c < 4; ++c)
+            ibz_set(&state.b[i][c], coordinates[i][c]);
+        for (int j = 0; j < 3; ++j) {
+            for (int c = 0; c < 4; ++c)
+                gram[i][j] += metric[c] * coordinates[i][c] * coordinates[j][c];
+        }
+    }
+    for (int i = 0; i < 2; ++i) {
+        ibz_set(&state.coefficients[i], coefficients[i]);
+        for (int j = 0; j < 3; ++j)
+            products[j] += coefficients[i] * gram[i][j];
+    }
+    require(ml2_apply_size_reduction(&state, 2), "Babai exact vector update");
+    for (int j = 0; j < 3; ++j) {
+        const int expected = j < 2 ? gram[2][j] - products[j] : gram[2][2] - 2 * products[2] +
+            coefficients[0] * products[0] + coefficients[1] * products[1];
+        ibz_t recomputed;
+        require(ml2_gram_entry(&recomputed, &state, 2, j) && ibz_cmp_int32(&recomputed, expected) == 0,
+                "on-demand Gram and exact snapshot update differ");
+    }
+    ml2_state_finalize(&state);
+    quat_alg_finalize(&alg);
+}
+
+/* Bareiss elimination gives each Gram-Schmidt pivot and coefficient as
+ * a ratio of exact integer minors. The small fixture limits bound every
+ * product here well within 128 bits. */
 static void
 check_reduced(const ibz_mat_4x4_t *basis, int rank, unsigned p)
 {
-    long double star[4][4] = {{0}}, norms[4] = {0}, mu[4][4] = {{0}};
+    __int128 gram[4][4] = {{0}};
+    require(p <= 367, "fixture metric exceeds the exact test bound");
     for (int i = 0; i < rank; ++i) {
-        long double vector[4];
-        for (int c = 0; c < 4; ++c) {
-            require(ibz_bitsize(&(*basis)[c][i]) <= 20,
-                    "unexpectedly large output for a small fixture");
-            vector[c] = ibz_get(&(*basis)[c][i]);
-            star[i][c] = vector[c];
+        for (int j = 0; j < rank; ++j) {
+            for (int c = 0; c < 4; ++c) {
+                require(ibz_bitsize(&(*basis)[c][i]) <= 5 && ibz_bitsize(&(*basis)[c][j]) <= 5,
+                        "fixture output exceeds the exact test bound");
+                gram[i][j] += (__int128)(c < 2 ? 1 : p) * ibz_get(&(*basis)[c][i]) *
+                              ibz_get(&(*basis)[c][j]);
+            }
         }
-        for (int j = 0; j < i; ++j) {
-            long double dot = 0;
-            for (int c = 0; c < 4; ++c)
-                dot += (c < 2 ? 1 : p) * vector[c] * star[j][c];
-            mu[i][j] = dot / norms[j];
-            require(fabsl(mu[i][j]) <= 0.505L + 1e-12L,
-                    "output is not size-reduced");
-            for (int c = 0; c < 4; ++c)
-                star[i][c] -= mu[i][j] * star[j][c];
+    }
+    __int128 previous = 1;
+    for (int k = 0; k < rank; ++k) {
+        const __int128 pivot = gram[k][k];
+        require(pivot > 0, "output basis is dependent");
+        for (int i = k + 1; i < rank; ++i) {
+            const __int128 value = gram[i][k];
+            require(20 * (value < 0 ? -value : value) <= 11 * pivot,
+                    "output exceeds the exact size-reduction bound");
+            for (int j = k + 1; j < rank; ++j) {
+                const __int128 numerator = pivot * gram[i][j] - value * gram[k][j];
+                require(numerator % previous == 0, "non-exact Gram minor division");
+                gram[i][j] = numerator / previous;
+            }
         }
-        for (int c = 0; c < 4; ++c)
-            norms[i] += (c < 2 ? 1 : p) * star[i][c] * star[i][c];
-        require(norms[i] > 0, "output basis is dependent");
-        if (i > 0)
-            require(0.995L * norms[i - 1] <= norms[i] +
-                    mu[i][i - 1] * mu[i][i - 1] * norms[i - 1] + 1e-12L,
-                    "output violates the Lovasz condition");
+        if (k > 0) {
+            const __int128 lambda = gram[k][k - 1];
+            const __int128 earlier = k == 1 ? 1 : gram[k - 2][k - 2];
+            require(43 * previous * previous <= 50 * (pivot * earlier + lambda * lambda),
+                    "output violates the exact Lovasz inequality");
+        }
+        previous = pivot;
     }
 }
 
@@ -210,6 +253,7 @@ main(void)
     for (size_t i = 0; i < sizeof(dimensions) / sizeof(dimensions[0]); ++i)
         for (size_t j = 0; j < sizeof(weights) / sizeof(weights[0]); ++j)
             check_dimension(dimensions[i], weights[j]);
+    check_gram_update();
     puts("MLLL regression: PASS");
     return EXIT_SUCCESS;
 }

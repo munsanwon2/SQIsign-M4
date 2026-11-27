@@ -40,6 +40,20 @@ void quat_alg_init_set_ui(quat_alg_t *alg,
  * @param alg The quaternion algebra
  */
 void quat_alg_coord_mul(ibz_vec_4_t *res, const ibz_vec_4_t *a, const ibz_vec_4_t *b, const quat_alg_t *alg);
+int quat_alg_coord_mul_fits(const ibz_vec_4_t *a, const ibz_vec_4_t *b, const quat_alg_t *alg);
+int quat_lattice_gram_checked(ibz_mat_4x4_t *gram, const quat_lattice_t *lattice, const quat_alg_t *alg);
+int quat_alg_coord_norm(ibz_t *norm, const ibz_vec_4_t *coord, const quat_alg_t *alg);
+/* Requires integral ambient residues and N dividing the reduced norm. */
+int quat_alg_nrd_N2_divides(const quat_alg_elem_t *x, const ibz_t *N, const quat_alg_t *alg);
+int ibz_mat_4x4_eval_checked(ibz_vec_4_t *res, const ibz_mat_4x4_t *mat, const ibz_vec_4_t *vec);
+
+quat_ball_status_t quat_lattice_sample_from_ball_direct_with_sampler(
+    quat_alg_elem_t *res,
+    const quat_lattice_t *lattice,
+    const quat_alg_t *alg,
+    const ibz_t *bound,
+    unsigned trials,
+    int (*sample)(ibz_t *, const ibz_t *, const ibz_t *));
 
 /** @brief Test if x is 0
  *
@@ -47,7 +61,6 @@ void quat_alg_coord_mul(ibz_vec_4_t *res, const ibz_vec_4_t *a, const ibz_vec_4_
  *
  * x is 0 iff all coordinates in x->coord are 0
  */
-int quat_alg_elem_is_zero(const quat_alg_elem_t *x);
 
 /** @brief Compute same denominator form of two quaternion algebra elements
  *

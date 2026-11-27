@@ -7,96 +7,15 @@
 // Access entry of symmetric matrix
 #define SYM(M, i, j) (i < j ? &M[j][i] : &M[i][j])
 
-static int
-lll_mul_checked(ibz_t *product, const ibz_t *a, const ibz_t *b)
-{
-    int ok = 0;
-    ibz_t abs_a, abs_b, limit, quotient, remainder;
-    ibz_init(&abs_a); ibz_init(&abs_b); ibz_init(&limit);
-    ibz_init(&quotient); ibz_init(&remainder);
-    ibz_abs(&abs_a, a);
-    ibz_abs(&abs_b, b);
-    if (ibz_is_negative(&abs_a) || ibz_is_negative(&abs_b))
-        goto cleanup;
-    if (ibz_is_zero(&abs_a) || ibz_is_zero(&abs_b)) {
-        ibz_set(product, 0);
-        ok = 1;
-        goto cleanup;
-    }
-    for (int i = 0; i < IBZ_LIMBS; i++)
-        limit[i] = UINT64_MAX;
-    limit[IBZ_LIMBS - 1] >>= 1;
-    ibz_div(&quotient, &remainder, &limit, &abs_b);
-    if (ibz_cmp(&abs_a, &quotient) > 0)
-        goto cleanup;
-    ibz_mul(product, a, b);
-    ok = 1;
-cleanup:
-    ibz_finalize(&abs_a); ibz_finalize(&abs_b); ibz_finalize(&limit);
-    ibz_finalize(&quotient); ibz_finalize(&remainder);
-    return ok;
-}
-
-/* Compute a-b in a temporary two's-complement array and inspect the signs
- * before publishing it.  This remains a status path even when the global
- * SQISIGN_INTBIG_OVERFLOW_CHECK build would otherwise abort. */
-static int
-lll_sub_checked(ibz_t *difference, const ibz_t *a, const ibz_t *b)
-{
-    ibz_t work;
-    uint64_t borrow = 0;
-    int a_negative = ibz_is_negative(a);
-    int b_negative = ibz_is_negative(b);
-    ibz_init(&work);
-    for (int i = 0; i < IBZ_LIMBS; i++) {
-        uint64_t first = (*a)[i] - borrow;
-        borrow = first > (*a)[i];
-        uint64_t second = first - (*b)[i];
-        borrow += second > first;
-        work[i] = second;
-    }
-    if (a_negative != b_negative && ibz_is_negative(&work) != a_negative) {
-        ibz_finalize(&work);
-        return 0;
-    }
-    ibz_copy(difference, &work);
-    ibz_finalize(&work);
-    return 1;
-}
-
-static int
-lll_gram_fits(const quat_lattice_t *lattice, const quat_alg_t *alg)
-{
-    const int p_bits = ibz_bitsize(&alg->p);
-    for (int i = 0; i < 4; i++) {
-        for (int j = 0; j < 4; j++) {
-            int max_product_bits = 0;
-            for (int k = 0; k < 4; k++) {
-                if (ibz_is_zero(&lattice->basis[k][i]) ||
-                    ibz_is_zero(&lattice->basis[k][j]))
-                    continue;
-                int product_bits = ibz_bitsize(&lattice->basis[k][i]) +
-                                   ibz_bitsize(&lattice->basis[k][j]);
-                if (k >= 2)
-                    product_bits += p_bits;
-                if (product_bits > max_product_bits)
-                    max_product_bits = product_bits;
-            }
-            /* Four terms and the final factor two require at most three
-             * additional magnitude bits. */
-            if (max_product_bits > IBZ_BITS - 4)
-                return 0;
-        }
-    }
-    return 1;
-}
-
 int
 quat_lll_core_checked(ibz_mat_4x4_t *G, ibz_mat_4x4_t *basis)
 {
     int status = 0;
     uint64_t iterations = 0;
     if (G == NULL || basis == NULL || ibz_cmp(&(*G)[0][0], &ibz_const_zero) <= 0)
+        return 0;
+    int rounding = fegetround();
+    if (rounding < 0 || (rounding != FE_TONEAREST && fesetround(FE_TONEAREST)))
         return 0;
     dpe_t dpe_const_one, dpe_const_DELTABAR;
 
@@ -164,29 +83,26 @@ quat_lll_core_checked(ibz_mat_4x4_t *G, ibz_mat_4x4_t *basis)
                     done = 0;
                     dpe_set(Xf, u[kappa][i]);
                     dpe_round(Xf, Xf);
-                    if (DPE_EXP(Xf) >= IBZ_BITS - 1)
-                        goto cleanup;
-                    dpe_get_z(&X, Xf);
-                    if (ibz_is_zero(&X))
+                    if (!dpe_get_z(&X, Xf) || ibz_is_zero(&X))
                         goto cleanup;
 
                     // Update basis: b_κ ← b_κ - X·b_i
                     for (int j = 0; j < 4; j++) {
-                        if (!lll_mul_checked(&tmpI, &X, &(*basis)[j][i]) ||
-                            !lll_sub_checked(&(*basis)[j][kappa], &(*basis)[j][kappa], &tmpI))
+                        if (!ibz_mul_checked(&tmpI, &X, &(*basis)[j][i]) ||
+                            !ibz_sub_checked(&(*basis)[j][kappa], &(*basis)[j][kappa], &tmpI))
                             goto cleanup;
                     }
                     // Update lower half of the Gram matrix
                     // <b_κ - X·b_i, b_κ - X·b_i> = <b_κ, b_κ> - 2X<b_κ, b_i> + X²<b_i, b_i> =
                     // <b_κ,b_κ> - X<b_κ,b_i> - X(<b_κ,b_i> - X·<b_i, b_i>)
                     //// 〈b_κ, b_κ〉 ← 〈b_κ, b_κ〉 - X·〈b_κ, b_i〉
-                    if (!lll_mul_checked(&tmpI, &X, &(*G)[kappa][i]) ||
-                        !lll_sub_checked(&(*G)[kappa][kappa], &(*G)[kappa][kappa], &tmpI))
+                    if (!ibz_mul_checked(&tmpI, &X, &(*G)[kappa][i]) ||
+                        !ibz_sub_checked(&(*G)[kappa][kappa], &(*G)[kappa][kappa], &tmpI))
                         goto cleanup;
                     for (int j = 0; j < 4; j++) { // works because i < κ
                         // 〈b_κ, b_j〉 ← 〈b_κ, b_j〉 - X·〈b_i, b_j〉
-                        if (!lll_mul_checked(&tmpI, &X, SYM((*G), i, j)) ||
-                            !lll_sub_checked(SYM((*G), kappa, j), SYM((*G), kappa, j), &tmpI))
+                        if (!ibz_mul_checked(&tmpI, &X, SYM((*G), i, j)) ||
+                            !ibz_sub_checked(SYM((*G), kappa, j), SYM((*G), kappa, j), &tmpI))
                             goto cleanup;
                     }
                     // After the loop:
@@ -283,7 +199,7 @@ cleanup:
             dpe_clear(u[i][j]);
         }
     }
-    return status;
+    return rounding == FE_TONEAREST || fesetround(rounding) == 0 ? status : 0;
 }
 
 void
@@ -297,16 +213,14 @@ quat_lattice_lll(ibz_mat_4x4_t *red, const quat_lattice_t *lattice, const quat_a
 {
     if (red == NULL || lattice == NULL || alg == NULL ||
         ibz_is_zero(&lattice->denom) ||
-        ibz_cmp(&alg->p, &ibz_const_zero) <= 0 ||
-        !lll_gram_fits(lattice, alg))
+        ibz_cmp(&alg->p, &ibz_const_zero) <= 0)
         return 0;
 
     ibz_mat_4x4_t G; // Gram Matrix
     ibz_mat_4x4_t candidate;
     ibz_mat_4x4_init(&G);
     ibz_mat_4x4_init(&candidate);
-    quat_lattice_gram(&G, lattice, alg);
-    if (ibz_cmp(&G[0][0], &ibz_const_zero) <= 0) {
+    if (!quat_lattice_gram_checked(&G, lattice, alg) || ibz_cmp(&G[0][0], &ibz_const_zero) <= 0) {
         ibz_mat_4x4_finalize(&candidate);
         ibz_mat_4x4_finalize(&G);
         return 0;

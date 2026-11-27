@@ -19,6 +19,24 @@ id2iso_wipe_digits(digit_t *digits, size_t count)
 #include <tools.h>
 #include <torsion_constants.h>
 
+#ifdef TARGET_ARM
+#include <sqisign_m4_workspace.h>
+#endif
+
+/* The special order O0 has q=1 at each level. Cornacchia's split primes
+ * are 2 and the primes congruent to 1 modulo 4. This list depends on q. */
+static const short qlapoti_split_primes[] = {
+#include "qlapoti_cornacchia_primes.inc"
+};
+
+static const ibz_cornacchia_extended_params_t QUAT_cornacchia_extended_params = {
+    .bad_primes_prod = &ibz_const_one,
+    .primality_test_iterations = QUAT_primality_num_iter,
+    .prime_list = qlapoti_split_primes,
+    .prime_list_length = sizeof(qlapoti_split_primes) / sizeof(qlapoti_split_primes[0]),
+    .q = 1,
+};
+
 
 static int
 _fixed_degree_isogeny_impl(quat_left_ideal_t *lideal,
@@ -316,6 +334,18 @@ cleanup:
     return status;
 }
 
+/* The four elements span Qlapoti search and theta evaluation. They fit
+ * beside either phase in CCM and otherwise consume 11,040 bytes of the
+ * level-V main stack throughout deeply nested integer arithmetic. */
+typedef struct {
+    quat_alg_elem_t mu1, mu2, small, theta;
+} qlapoti_isogeny_elements_t;
+
+#ifdef TARGET_ARM
+_Static_assert(sizeof(qlapoti_isogeny_elements_t) <= 11040u,
+               "Qlapoti isogeny elements exceed their CCM budget");
+#endif
+
 static int
 dim2id2iso_ideal_to_isogeny_clapotis_core(quat_alg_elem_t *beta1,
                                           quat_alg_elem_t *beta2,
@@ -341,7 +371,18 @@ dim2id2iso_ideal_to_isogeny_clapotis_core(quat_alg_elem_t *beta1,
         ibz_is_zero(&lideal->lattice.denom))
         return ID2ISO_STATUS_FATAL;
 
-    quat_alg_elem_t mu1, mu2, small, theta;
+#ifdef TARGET_ARM
+    qlapoti_isogeny_elements_t *elements = sqisign_m4_workspace_acquire(sizeof(*elements));
+    if (elements == NULL)
+        return ID2ISO_STATUS_FATAL;
+#else
+    qlapoti_isogeny_elements_t automatic_elements;
+    qlapoti_isogeny_elements_t *elements = &automatic_elements;
+#endif
+    quat_alg_elem_t *const mu1 = &elements->mu1;
+    quat_alg_elem_t *const mu2 = &elements->mu2;
+    quat_alg_elem_t *const small = &elements->small;
+    quat_alg_elem_t *const theta = &elements->theta;
     ibz_t tmp;
     ec_basis_t E0_basis, B2;
     fp2_t r1, r2, prod;
@@ -379,20 +420,20 @@ dim2id2iso_ideal_to_isogeny_clapotis_core(quat_alg_elem_t *beta1,
     ibz_init(&n);
     ibz_init(&d);
     ibz_init(&two_c);
-    quat_alg_elem_init(&theta);
-    quat_alg_elem_init(&mu1);
-    quat_alg_elem_init(&mu2);
-    quat_alg_elem_init(&small);
+    quat_alg_elem_init(theta);
+    quat_alg_elem_init(mu1);
+    quat_alg_elem_init(mu2);
+    quat_alg_elem_init(small);
     ibz_init(&tmp);
 
     int ret = ID2ISO_STATUS_FATAL;
     int used_torsion = QUAT_qlapoti_used_power_of_two;
     int c;
 
-    ret = quat_qlapoti(&mu1,
-                       &mu2,
-                       &theta,
-                       &small,
+    ret = quat_qlapoti(mu1,
+                       mu2,
+                       theta,
+                       small,
                        lideal,
                        Bpoo,
                        QUAT_qlapoti_iteration_bound,
@@ -416,9 +457,9 @@ dim2id2iso_ideal_to_isogeny_clapotis_core(quat_alg_elem_t *beta1,
 
     {
         int qlapoti_status = ret;
-        quat_alg_normalize(&theta);
+        quat_alg_normalize(theta);
 #if (ID2ISO_DEBUG_PRINT > 2)
-        quat_alg_elem_print(&theta);
+        quat_alg_elem_print(theta);
 #endif
         used_torsion = used_torsion -
                         (qlapoti_status == QUAT_QLAPOTI_SUCCESS_TRANSFORMED);
@@ -436,15 +477,15 @@ dim2id2iso_ideal_to_isogeny_clapotis_core(quat_alg_elem_t *beta1,
 #if (ID2ISO_DEBUG_PRINT > 2)
         debug_print("used_torsion adjusted after Qlapoti");
 #endif
-        quat_alg_conj(&theta, &theta);
+        quat_alg_conj(theta, theta);
         {
             // norm d1
-            if (!quat_alg_norm(degree1, &d, &mu1, Bpoo) || !ibz_is_one(&d)) {
+            if (!quat_alg_norm(degree1, &d, mu1, Bpoo) || !ibz_is_one(&d)) {
                 ret = ID2ISO_STATUS_FATAL;
                 goto cleanup;
             }
             ibz_mul(degree1, degree1, &lideal->norm);
-            if (!quat_alg_norm(&n, &d, &small, Bpoo) ||
+            if (!quat_alg_norm(&n, &d, small, Bpoo) ||
                 !ibz_is_one(&d) || ibz_is_zero(&n)) {
                 ret = ID2ISO_STATUS_FATAL;
                 goto cleanup;
@@ -457,8 +498,8 @@ dim2id2iso_ideal_to_isogeny_clapotis_core(quat_alg_elem_t *beta1,
 
             if (publish_auxiliary_outputs) {
                 // beta1
-                quat_alg_mul(beta1, &mu1, &small, Bpoo);
-                if (!quat_alg_norm(&n, &d, &small, Bpoo) ||
+                quat_alg_mul(beta1, mu1, small, Bpoo);
+                if (!quat_alg_norm(&n, &d, small, Bpoo) ||
                     ibz_is_zero(&lideal->norm)) {
                     ret = ID2ISO_STATUS_FATAL;
                     goto cleanup;
@@ -480,13 +521,13 @@ dim2id2iso_ideal_to_isogeny_clapotis_core(quat_alg_elem_t *beta1,
             quat_left_ideal_init(&I1);
             quat_left_ideal_init(&betatest);
             quat_alg_elem_init(&gen);
-            assert(quat_lattice_contains(NULL, &lideal->lattice, &small));
-            quat_alg_conj(&gen, &small);
+            assert(quat_lattice_contains(NULL, &lideal->lattice, small));
+            quat_alg_conj(&gen, small);
             ibz_mul(&gen.denom, &gen.denom, &lideal->norm);
             assert(quat_lideal_mul(&I1, lideal, &gen, Bpoo));
 
-            assert(quat_lattice_contains(NULL, &I1.lattice, &mu1));
-            quat_alg_conj(&gen, &mu1);
+            assert(quat_lattice_contains(NULL, &I1.lattice, mu1));
+            quat_alg_conj(&gen, mu1);
             ibz_mul(&gen.denom, &gen.denom, &I1.norm);
             assert(quat_lideal_mul(&I1, &I1, &gen, Bpoo));
 
@@ -506,12 +547,12 @@ dim2id2iso_ideal_to_isogeny_clapotis_core(quat_alg_elem_t *beta1,
         }
         {
             // norm d2
-            if (!quat_alg_norm(degree2, &d, &mu2, Bpoo) || !ibz_is_one(&d)) {
+            if (!quat_alg_norm(degree2, &d, mu2, Bpoo) || !ibz_is_one(&d)) {
                 ret = ID2ISO_STATUS_FATAL;
                 goto cleanup;
             }
             ibz_mul(degree2, degree2, &lideal->norm);
-            if (!quat_alg_norm(&n, &d, &small, Bpoo) ||
+            if (!quat_alg_norm(&n, &d, small, Bpoo) ||
                 !ibz_is_one(&d) || ibz_is_zero(&n)) {
                 ret = ID2ISO_STATUS_FATAL;
                 goto cleanup;
@@ -524,8 +565,8 @@ dim2id2iso_ideal_to_isogeny_clapotis_core(quat_alg_elem_t *beta1,
 
             if (publish_auxiliary_outputs) {
                 // beta2
-                quat_alg_mul(beta2, &mu2, &small, Bpoo);
-                if (!quat_alg_norm(&n, &d, &small, Bpoo) ||
+                quat_alg_mul(beta2, mu2, small, Bpoo);
+                if (!quat_alg_norm(&n, &d, small, Bpoo) ||
                     ibz_is_zero(&lideal->norm)) {
                     ret = ID2ISO_STATUS_FATAL;
                     goto cleanup;
@@ -546,13 +587,13 @@ dim2id2iso_ideal_to_isogeny_clapotis_core(quat_alg_elem_t *beta1,
             quat_left_ideal_init(&I2);
             quat_left_ideal_init(&betatest);
             quat_alg_elem_init(&gen);
-            assert(quat_lattice_contains(NULL, &lideal->lattice, &small));
-            quat_alg_conj(&gen, &small);
+            assert(quat_lattice_contains(NULL, &lideal->lattice, small));
+            quat_alg_conj(&gen, small);
             ibz_mul(&gen.denom, &gen.denom, &lideal->norm);
             assert(quat_lideal_mul(&I2, lideal, &gen, Bpoo));
 
-            assert(quat_lattice_contains(NULL, &I2.lattice, &mu2));
-            quat_alg_conj(&gen, &mu2);
+            assert(quat_lattice_contains(NULL, &I2.lattice, mu2));
+            quat_alg_conj(&gen, mu2);
             ibz_mul(&gen.denom, &gen.denom, &I2.norm);
             assert(quat_lideal_mul(&I2, &I2, &gen, Bpoo));
 
@@ -594,17 +635,17 @@ dim2id2iso_ideal_to_isogeny_clapotis_core(quat_alg_elem_t *beta1,
 
         /* mu2 is dead after beta2/d2 are derived; reuse its fixed-width
          * storage for the endomorphism scalar instead of another quaternion. */
-        quat_alg_elem_set(&mu2, 1, 0, 0, 0, 0);
+        quat_alg_elem_set(mu2, 1, 0, 0, 0, 0);
 
-        ibz_mul(&mu2.coord[0], &theta.coord[0], &(tmp));
-        ibz_mul(&mu2.coord[1], &theta.coord[1], &(tmp));
-        ibz_mul(&mu2.coord[2], &theta.coord[2], &(tmp));
-        ibz_mul(&mu2.coord[3], &theta.coord[3], &(tmp));
-        ibz_copy(&mu2.denom, &theta.denom);
+        ibz_mul(&mu2->coord[0], &theta->coord[0], &(tmp));
+        ibz_mul(&mu2->coord[1], &theta->coord[1], &(tmp));
+        ibz_mul(&mu2->coord[2], &theta->coord[2], &(tmp));
+        ibz_mul(&mu2->coord[3], &theta->coord[3], &(tmp));
+        ibz_copy(&mu2->denom, &theta->denom);
 
         if (!test_basis_order_twof(&E0_basis, &CURVE_E0, TORSION_EVEN_POWER - c) ||
             !endomorphism_application_even_basis(
-                 &E0_basis, 0, &CURVE_E0, &mu2, TORSION_EVEN_POWER - c) ||
+                 &E0_basis, 0, &CURVE_E0, mu2, TORSION_EVEN_POWER - c) ||
             !test_basis_order_twof(&E0_basis, &CURVE_E0, TORSION_EVEN_POWER - c)) {
             ret = ID2ISO_STATUS_FATAL;
             goto cleanup;
@@ -620,8 +661,8 @@ dim2id2iso_ideal_to_isogeny_clapotis_core(quat_alg_elem_t *beta1,
             /* theta is dead once the kernel has been constructed.  Use it as
              * the non-published beta1 value instead of materializing another
              * level-sized quaternion element in the curve-only wrapper. */
-            quat_alg_mul(&theta, &mu1, &small, Bpoo);
-            if (!quat_alg_norm(&n, &d, &small, Bpoo) ||
+            quat_alg_mul(theta, mu1, small, Bpoo);
+            if (!quat_alg_norm(&n, &d, small, Bpoo) ||
                 ibz_is_zero(&lideal->norm)) {
                 ret = ID2ISO_STATUS_FATAL;
                 goto cleanup;
@@ -631,9 +672,9 @@ dim2id2iso_ideal_to_isogeny_clapotis_core(quat_alg_elem_t *beta1,
                 ret = ID2ISO_STATUS_FATAL;
                 goto cleanup;
             }
-            ibz_mul(&theta.denom, &theta.denom, &n);
-            quat_alg_normalize(&theta);
-            beta1_for_push = &theta;
+            ibz_mul(&theta->denom, &theta->denom, &n);
+            quat_alg_normalize(theta);
+            beta1_for_push = theta;
         }
 
         /* B2 is dead after constructing ker; reuse it for the pushed basis. */
@@ -676,15 +717,15 @@ dim2id2iso_ideal_to_isogeny_clapotis_core(quat_alg_elem_t *beta1,
             ibz_pow(&two_c, &ibz_const_two, c);
             ibz_copy(&d, &(tmp));
 
-            quat_alg_elem_set(&mu2, 1, 0, 0, 0, 0);
-            ibz_mul(&mu2.coord[0], &beta1_for_push->coord[0], &(tmp));
-            ibz_mul(&mu2.coord[1], &beta1_for_push->coord[1], &(tmp));
-            ibz_mul(&mu2.coord[2], &beta1_for_push->coord[2], &(tmp));
-            ibz_mul(&mu2.coord[3], &beta1_for_push->coord[3], &(tmp));
-            ibz_copy(&mu2.denom, &beta1_for_push->denom);
+            quat_alg_elem_set(mu2, 1, 0, 0, 0, 0);
+            ibz_mul(&mu2->coord[0], &beta1_for_push->coord[0], &(tmp));
+            ibz_mul(&mu2->coord[1], &beta1_for_push->coord[1], &(tmp));
+            ibz_mul(&mu2->coord[2], &beta1_for_push->coord[2], &(tmp));
+            ibz_mul(&mu2->coord[3], &beta1_for_push->coord[3], &(tmp));
+            ibz_copy(&mu2->denom, &beta1_for_push->denom);
 
             if (!endomorphism_application_even_basis(
-                    &B2, 0, &CURVE_E0, &mu2, TORSION_EVEN_POWER) ||
+                    &B2, 0, &CURVE_E0, mu2, TORSION_EVEN_POWER) ||
                 !test_basis_order_twof(&B2, &CURVE_E0, TORSION_EVEN_POWER)) {
                 ret = ID2ISO_STATUS_FATAL;
                 goto cleanup;
@@ -774,11 +815,14 @@ cleanup:
     ibz_finalize(&n);
     ibz_finalize(&d);
     ibz_finalize(&two_c);
-    quat_alg_elem_finalize(&theta);
-    quat_alg_elem_finalize(&mu1);
-    quat_alg_elem_finalize(&mu2);
-    quat_alg_elem_finalize(&small);
+    quat_alg_elem_finalize(theta);
+    quat_alg_elem_finalize(mu1);
+    quat_alg_elem_finalize(mu2);
+    quat_alg_elem_finalize(small);
     ibz_finalize(&tmp);
+#ifdef TARGET_ARM
+    sqisign_m4_workspace_release(elements);
+#endif
     return ret;
 }
 

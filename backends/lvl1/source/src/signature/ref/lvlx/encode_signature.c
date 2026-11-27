@@ -152,7 +152,7 @@ secret_key_to_bytes(byte_t *enc, const secret_key_t *sk, const public_key_t *pk)
         }
     }
 
-    enc = ibz_to_bytes(enc, &sk->secret_ideal.norm, FP_ENCODED_BYTES, false);
+    enc = ibz_to_bytes(enc, &sk->secret_ideal.norm, SECRET_IDEAL_BYTES, false);
     if (enc == NULL) {
         goto fail;
     }
@@ -176,22 +176,22 @@ secret_key_to_bytes(byte_t *enc, const secret_key_t *sk, const public_key_t *pk)
                 goto fail;
             }
         }
-        enc = ibz_to_bytes(enc, &gen.coord[0], FP_ENCODED_BYTES, true);
+        enc = ibz_to_bytes(enc, &gen.coord[0], SECRET_IDEAL_BYTES, true);
         if (enc == NULL) {
             quat_alg_elem_finalize(&gen);
             goto fail;
         }
-        enc = ibz_to_bytes(enc, &gen.coord[1], FP_ENCODED_BYTES, true);
+        enc = ibz_to_bytes(enc, &gen.coord[1], SECRET_IDEAL_BYTES, true);
         if (enc == NULL) {
             quat_alg_elem_finalize(&gen);
             goto fail;
         }
-        enc = ibz_to_bytes(enc, &gen.coord[2], FP_ENCODED_BYTES, true);
+        enc = ibz_to_bytes(enc, &gen.coord[2], SECRET_IDEAL_BYTES, true);
         if (enc == NULL) {
             quat_alg_elem_finalize(&gen);
             goto fail;
         }
-        enc = ibz_to_bytes(enc, &gen.coord[3], FP_ENCODED_BYTES, true);
+        enc = ibz_to_bytes(enc, &gen.coord[3], SECRET_IDEAL_BYTES, true);
         if (enc == NULL) {
             quat_alg_elem_finalize(&gen);
             goto fail;
@@ -251,11 +251,11 @@ secret_key_from_bytes(secret_key_t *sk, public_key_t *pk, const byte_t *enc)
         ibz_init(&norm);
         quat_alg_elem_t gen;
         quat_alg_elem_init(&gen);
-        enc = ibz_from_bytes(&norm, enc, FP_ENCODED_BYTES, false);
-        enc = ibz_from_bytes(&gen.coord[0], enc, FP_ENCODED_BYTES, true);
-        enc = ibz_from_bytes(&gen.coord[1], enc, FP_ENCODED_BYTES, true);
-        enc = ibz_from_bytes(&gen.coord[2], enc, FP_ENCODED_BYTES, true);
-        enc = ibz_from_bytes(&gen.coord[3], enc, FP_ENCODED_BYTES, true);
+        enc = ibz_from_bytes(&norm, enc, SECRET_IDEAL_BYTES, false);
+        enc = ibz_from_bytes(&gen.coord[0], enc, SECRET_IDEAL_BYTES, true);
+        enc = ibz_from_bytes(&gen.coord[1], enc, SECRET_IDEAL_BYTES, true);
+        enc = ibz_from_bytes(&gen.coord[2], enc, SECRET_IDEAL_BYTES, true);
+        enc = ibz_from_bytes(&gen.coord[3], enc, SECRET_IDEAL_BYTES, true);
         /* paper Issue 9: norm is read from the encoded sk where it was stored
          * as the actual nrd of secret_ideal during keygen serialization. */
         int ok = quat_lideal_create_with_norm(

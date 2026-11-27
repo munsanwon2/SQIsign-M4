@@ -64,7 +64,10 @@ _Static_assert(sizeof(theta_schedule_de2_offsets) == 16,
 _Static_assert(sizeof(theta_schedule_de2_splits) == 674,
                "theta schedule split bytes changed");
 
-/* Fail closed: there is deliberately no half-split fallback. */
+/* Preserve the offline splits within their domain. For a longer suffix,
+ * take a right subtree that fits in the next row, keeping the long left
+ * suffix for later. At the last usable level, recompute one leaf at a time.
+ * This extends the strategy without increasing the number of slots. */
 static inline int
 theta_schedule_de2_lookup(unsigned current, uint16_t remaining, uint16_t *num_dbls)
 {
@@ -72,8 +75,6 @@ theta_schedule_de2_lookup(unsigned current, uint16_t remaining, uint16_t *num_db
         return 0;
     const unsigned depth = THETA_SCHEDULE_DE2_MAX_SLOTS - current;
     if (depth == 2) {
-        if (remaining > 4)
-            return 0;
         *num_dbls = remaining - 1;
         return 1;
     }
@@ -83,8 +84,11 @@ theta_schedule_de2_lookup(unsigned current, uint16_t remaining, uint16_t *num_db
     const uint16_t begin = theta_schedule_de2_offsets[row];
     const uint16_t end = theta_schedule_de2_offsets[row + 1];
     const uint16_t maximum = (uint16_t)(end - begin + 1);
-    if (remaining > maximum)
-        return 0;
+    if (remaining > maximum) {
+        const uint16_t right = row == 0 ? 4 : (uint16_t)(begin - theta_schedule_de2_offsets[row - 1] + 1);
+        *num_dbls = remaining - right;
+        return 1;
+    }
     const uint16_t split = theta_schedule_de2_splits[begin + remaining - 2];
     if (split == 0 || split >= remaining)
         return 0;

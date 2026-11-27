@@ -3,6 +3,20 @@
  * namespace macros below resolve to the matching fixed-precision symbols. */
 #include "sqisign_m4_backend.h"
 
+#if defined(TARGET_ARM) && !defined(NDEBUG)
+/* A checked firmware assertion signals a device fault without linking
+ * Newlib's stdio and process-termination implementation. */
+_Noreturn void
+__assert_func(const char *file, int line, const char *function, const char *expression)
+{
+    (void)file;
+    (void)line;
+    (void)function;
+    (void)expression;
+    __builtin_trap();
+}
+#endif
+
 #include <encoded_sizes.h>
 #include <sig.h>
 #include <signature.h>
@@ -12,7 +26,7 @@
 
 /*
  * The STM32F407 has a separately addressable 16 KiB SRAM2 bank.  Keeping the
- * decoded key/signature objects there removes their roughly 12 KiB lvl-V
+ * decoded key/signature objects there removes their roughly 15 KiB lvl-V
  * footprint from the already tight main-stack budget.  Other targets retain
  * automatic storage, which keeps the portable/host implementation reentrant.
  */
@@ -203,3 +217,13 @@ cleanup:
     sqisign_m4_binding_release(state);
     return status;
 }
+
+#if !defined(TARGET_ARM) && !defined(NDEBUG)
+#include <stdio.h>
+
+void
+sqisign_host_debug_warning(const char *message, const char *file, int line, const char *function)
+{
+    fprintf(stderr, "%s:%d: %s: %s\n", file, line, function, message);
+}
+#endif

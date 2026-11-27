@@ -30,8 +30,8 @@ typedef scalar_t scalar_mtx_2x2_t[2][2];
 typedef struct signature
 {
     fp2_t E_aux_A; // the Montgomery A-coefficient for the auxiliary curve
-    uint8_t backtracking;
-    uint8_t two_resp_length;
+    uint16_t backtracking;
+    uint16_t two_resp_length;
     scalar_mtx_2x2_t mat_Bchall_can_to_B_chall; // the matrix of the desired basis
     scalar_t chall_coeff;
     uint8_t hint_aux;

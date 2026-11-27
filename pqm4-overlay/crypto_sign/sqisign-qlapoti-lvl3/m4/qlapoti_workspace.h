@@ -9,8 +9,8 @@ extern "C" {
 #endif
 
 #ifndef QLW_WORKSPACE_BYTES
-/* 25,120-byte persistent signing cap + 30,528-byte largest phase cap,
- * allocator headers, and 5 KiB of fail-closed headroom. */
+/* CCM contains transient scratch such as ML2 or a theta chain. The
+ * persistent signing state lives in ordinary SRAM outside this arena. */
 #define QLW_WORKSPACE_BYTES ((size_t)61440u)
 #endif
 

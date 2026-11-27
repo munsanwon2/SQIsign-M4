@@ -43,39 +43,21 @@ quat_lattice_basis_transpose_in_place(ibz_mat_4x4_t *basis)
 int
 quat_lattice_equal(const quat_lattice_t *lat1, const quat_lattice_t *lat2)
 {
-    int equal = 1;
-    quat_lattice_t a, b;
-    quat_lattice_init(&a);
-    quat_lattice_init(&b);
-    if (!quat_lattice_reduce_denom(&a, lat1) ||
-        !quat_lattice_reduce_denom(&b, lat2)) {
-        equal = 0;
-        goto cleanup;
-    }
-    ibz_abs(&(a.denom), &(a.denom));
-    ibz_abs(&(b.denom), &(b.denom));
-    if (!quat_lattice_hnf(&a) || !quat_lattice_hnf(&b)) {
-        equal = 0;
-        goto cleanup;
-    }
-    equal = equal && (ibz_cmp(&(a.denom), &(b.denom)) == 0);
-    equal = equal && ibz_mat_4x4_equal(&(a.basis), &(b.basis));
-cleanup:
-    quat_lattice_finalize(&a);
-    quat_lattice_finalize(&b);
-    return (equal);
+    return quat_lattice_inclusion(lat1, lat2) && quat_lattice_inclusion(lat2, lat1);
 }
 
-// sublattice test
 int
 quat_lattice_inclusion(const quat_lattice_t *sublat, const quat_lattice_t *overlat)
 {
-    int res;
-    quat_lattice_t sum;
-    quat_lattice_init(&sum);
-    res = quat_lattice_add(&sum, overlat, sublat) && quat_lattice_equal(&sum, overlat);
-    quat_lattice_finalize(&sum);
-    return (res);
+    quat_alg_elem_t vector;
+    ibz_copy(&vector.denom, &sublat->denom);
+    for (int column = 0; column < 4; column++) {
+        for (int row = 0; row < 4; row++)
+            ibz_copy(&vector.coord[row], &sublat->basis[row][column]);
+        if (!quat_lattice_contains(NULL, overlat, &vector))
+            return 0;
+    }
+    return 1;
 }
 
 int
@@ -271,37 +253,35 @@ quat_lattice_alg_elem_mul(quat_lattice_t *prod,
                           const quat_alg_elem_t *elem,
                           const quat_alg_t *alg)
 {
+    if (prod == NULL || lat == NULL || elem == NULL || alg == NULL ||
+        ibz_is_zero(&lat->denom) || ibz_is_zero(&elem->denom) ||
+        ibz_cmp(&alg->p, &ibz_const_zero) <= 0)
+        return 0;
     quat_lattice_t candidate;
-    int ok = 0;
-    quat_lattice_init(&candidate);
-    quat_lattice_mat_alg_coord_mul_without_hnf(
-        &candidate.basis, &lat->basis, &elem->coord, alg);
-    ibz_mul(&candidate.denom, &lat->denom, &elem->denom);
-    /* paper Issue 8 extension (replaces quat_lattice_hnf): use ML2 on the
-     * 4 column generators to obtain a LLL-reduced basis of the lattice
-     * (without cofactor blow-up). Transpose the private candidate so its rows
-     * are the four generators, then use ML2's documented input/output overlap:
-     * the complete input is copied before rank-four publication. */
-    {
-        quat_lattice_basis_transpose_in_place(&candidate.basis);
-        int rho = quat_ml2_retry(&candidate.basis[0],
-                                 4,
-                                 (const ibz_vec_4_t *)&candidate.basis[0],
-                                 4,
-                                 alg);
-        if (rho != 4)
-            goto cleanup;
-        quat_lattice_basis_transpose_in_place(&candidate.basis);
+    if (!ibz_mul_checked(&candidate.denom, &lat->denom, &elem->denom))
+        return 0;
+    for (int i = 0; i < 4; i++) {
+        ibz_vec_4_t column, multiplied;
+        for (int j = 0; j < 4; j++)
+            ibz_copy(&column[j], &lat->basis[j][i]);
+        if (!quat_alg_coord_mul_fits(&column, &elem->coord, alg))
+            return 0;
+        quat_alg_coord_mul(&multiplied, &column, &elem->coord, alg);
+        for (int j = 0; j < 4; j++)
+            ibz_copy(&candidate.basis[j][i], &multiplied[j]);
     }
+
+    /* A large scalar may cancel from every generator before the Gram
+     * matrix is formed. This normalization preserves the rational span. */
     if (!quat_lattice_reduce_denom(&candidate, &candidate))
-        goto cleanup;
+        return 0;
+    quat_lattice_basis_transpose_in_place(&candidate.basis);
+    if (quat_ml2_retry(candidate.basis, 4, candidate.basis, 4, alg) != 4)
+        return 0;
+    quat_lattice_basis_transpose_in_place(&candidate.basis);
     ibz_mat_4x4_copy(&prod->basis, &candidate.basis);
     ibz_copy(&prod->denom, &candidate.denom);
-    ok = 1;
-
-cleanup:
-    quat_lattice_finalize(&candidate);
-    return ok;
+    return 1;
 }
 
 int
@@ -447,83 +427,82 @@ cleanup:
     return ok;
 }
 
-// lattice assumed of full rank
+/* Evaluate M^{-1}x after cancelling the two scalar denominators. */
 int
 quat_lattice_contains(ibz_vec_4_t *coord, const quat_lattice_t *lat, const quat_alg_elem_t *x)
 {
-    int divisible = 0;
-    ibz_vec_4_t work_coord;
+    ibz_vec_4_t relative;
     ibz_mat_4x4_t inv;
-    ibz_t det, prod;
-    ibz_init(&prod);
-    ibz_init(&det);
-    ibz_vec_4_init(&work_coord);
-    ibz_mat_4x4_init(&inv);
-    if (!ibz_mat_4x4_inv_with_det_as_denom(&inv, &det, &(lat->basis)))
-        goto cleanup;
-    ibz_mat_4x4_eval(&work_coord, &inv, &(x->coord));
-    ibz_vec_4_scalar_mul(&(work_coord), &(lat->denom), &work_coord);
-    ibz_mul(&prod, &(x->denom), &det);
-    if (!ibz_is_zero(&prod))
-        divisible = ibz_vec_4_scalar_div(&work_coord, &prod, &work_coord);
-    // copy result
-    if (divisible && (coord != NULL)) {
+    ibz_t det, gcd, multiplier, divisor, remainder;
+    if (ibz_is_zero(&lat->denom) || ibz_is_zero(&x->denom) ||
+        !ibz_mat_4x4_inv_with_det_as_denom(&inv, &det, &lat->basis))
+        return 0;
+
+    ibz_gcd(&gcd, &lat->denom, &x->denom);
+    ibz_div(&multiplier, &remainder, &lat->denom, &gcd);
+    ibz_div(&divisor, &remainder, &x->denom, &gcd);
+    if (!ibz_mul_checked(&divisor, &divisor, &det) ||
+        !ibz_mat_4x4_eval_checked(&relative, &inv, &x->coord))
+        return 0;
+
+    /* multiplier/divisor can contain a common factor from det as well. */
+    ibz_gcd(&gcd, &multiplier, &divisor);
+    ibz_div(&multiplier, &remainder, &multiplier, &gcd);
+    ibz_div(&divisor, &remainder, &divisor, &gcd);
+    if (!ibz_vec_4_scalar_div(&relative, &divisor, &relative))
+        return 0;
+    if (coord != NULL) {
         for (int i = 0; i < 4; i++) {
-            ibz_copy(&((*coord)[i]), &(work_coord[i]));
+            if (!ibz_mul_checked(&relative[i], &relative[i], &multiplier))
+                return 0;
         }
+        ibz_vec_4_copy(coord, &relative);
     }
-cleanup:
-    ibz_finalize(&prod);
-    ibz_finalize(&det);
-    ibz_mat_4x4_finalize(&inv);
-    ibz_vec_4_finalize(&work_coord);
-    return (divisible);
+    return 1;
 }
 
 int
 quat_lattice_index(ibz_t *index, const quat_lattice_t *sublat, const quat_lattice_t *overlat)
 {
-    int ok = 0;
-    ibz_t tmp, det, candidate;
+    ibz_t numerator, denominator, scale_num, scale_den, gcd, remainder;
     if (index == NULL || sublat == NULL || overlat == NULL ||
-        ibz_is_zero(&sublat->denom) || ibz_is_zero(&overlat->denom))
+        ibz_is_zero(&sublat->denom) || ibz_is_zero(&overlat->denom) ||
+        !ibz_mat_4x4_inv_with_det_as_denom(NULL, &numerator, &sublat->basis) ||
+        !ibz_mat_4x4_inv_with_det_as_denom(NULL, &denominator, &overlat->basis))
         return 0;
-    ibz_init(&tmp);
-    ibz_init(&det);
-    ibz_init(&candidate);
 
-    // det = det(sublat->basis)
-    if (!ibz_mat_4x4_inv_with_det_as_denom(NULL, &det, &sublat->basis))
-        goto cleanup;
-    // tmp = (overlat->denom)⁴
-    ibz_mul(&tmp, &overlat->denom, &overlat->denom);
-    ibz_mul(&tmp, &tmp, &tmp);
-    // index = (overlat->denom)⁴ · det(sublat->basis)
-    ibz_mul(&candidate, &det, &tmp);
-    // tmp = (sublat->denom)⁴
-    ibz_mul(&tmp, &sublat->denom, &sublat->denom);
-    ibz_mul(&tmp, &tmp, &tmp);
-    // det = det(overlat->basis)
-    if (!ibz_mat_4x4_inv_with_det_as_denom(NULL, &det, &overlat->basis))
-        goto cleanup;
-    // tmp = (sublat->denom)⁴ · det(overlat->basis)
-    ibz_mul(&tmp, &tmp, &det);
-    // index = index / tmp
-    if (ibz_is_zero(&tmp))
-        goto cleanup;
-    ibz_div(&candidate, &tmp, &candidate, &tmp);
-    if (!ibz_is_zero(&tmp))
-        goto cleanup;
-    // index = |index|
-    ibz_abs(&candidate, &candidate);
-    ibz_copy(index, &candidate);
-    ok = 1;
+    ibz_abs(&numerator, &numerator);
+    ibz_abs(&denominator, &denominator);
+    if (ibz_is_negative(&numerator) || ibz_is_negative(&denominator))
+        return 0;
+    ibz_gcd(&gcd, &numerator, &denominator);
+    ibz_div(&numerator, &remainder, &numerator, &gcd);
+    ibz_div(&denominator, &remainder, &denominator, &gcd);
+    ibz_gcd(&gcd, &sublat->denom, &overlat->denom);
+    ibz_div(&scale_num, &remainder, &overlat->denom, &gcd);
+    ibz_div(&scale_den, &remainder, &sublat->denom, &gcd);
+    ibz_abs(&scale_num, &scale_num);
+    ibz_abs(&scale_den, &scale_den);
 
-cleanup:
-    ibz_finalize(&candidate);
-    ibz_finalize(&tmp);
-    ibz_finalize(&det);
-    return ok;
+    /* Cancel the fourth power of the denominator against the determinant
+     * before any multiplication. Reduced scale_num and scale_den are coprime. */
+    for (int i = 0; i < 4; i++) {
+        ibz_div(&numerator, &remainder, &numerator, &scale_den);
+        if (!ibz_is_zero(&remainder))
+            return 0;
+    }
+    for (int i = 0; i < 4; i++) {
+        ibz_t factor;
+        ibz_gcd(&gcd, &scale_num, &denominator);
+        ibz_div(&denominator, &remainder, &denominator, &gcd);
+        ibz_div(&factor, &remainder, &scale_num, &gcd);
+        if (!ibz_mul_checked(&numerator, &numerator, &factor))
+            return 0;
+    }
+    if (!ibz_is_one(&denominator) || ibz_is_negative(&numerator))
+        return 0;
+    ibz_copy(index, &numerator);
+    return 1;
 }
 
 int
@@ -587,4 +566,27 @@ quat_lattice_gram(ibz_mat_4x4_t *G, const quat_lattice_t *lattice, const quat_al
         }
     }
     ibz_finalize(&tmp);
+}
+
+int
+quat_lattice_gram_checked(ibz_mat_4x4_t *gram, const quat_lattice_t *lattice, const quat_alg_t *alg)
+{
+    ibz_mat_4x4_t candidate = { 0 };
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j <= i; j++) {
+            ibz_t *value = &candidate[i][j];
+            for (int k = 0; k < 4; k++) {
+                ibz_t term;
+                if (!ibz_mul_checked(&term, &lattice->basis[k][i], &lattice->basis[k][j]) ||
+                    (k >= 2 && !ibz_mul_checked(&term, &term, &alg->p)) ||
+                    !ibz_add_checked(value, value, &term))
+                    return 0;
+            }
+            if (!ibz_add_checked(value, value, value))
+                return 0;
+            ibz_copy(&candidate[j][i], value);
+        }
+    }
+    ibz_mat_4x4_copy(gram, &candidate);
+    return 1;
 }

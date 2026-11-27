@@ -42,6 +42,23 @@ decode_digits(digit_t *x, const byte_t *enc, size_t nbytes, size_t ndigits)
 #endif
 }
 
+static byte_t *
+encode_response_exponent(byte_t *enc, uint16_t exponent)
+{
+    for (unsigned i = 0; i < RESPONSE_EXPONENT_BYTES; ++i)
+        *enc++ = (byte_t)(exponent >> (8 * i));
+    return enc;
+}
+
+static const byte_t *
+decode_response_exponent(uint16_t *exponent, const byte_t *enc)
+{
+    *exponent = 0;
+    for (unsigned i = 0; i < RESPONSE_EXPONENT_BYTES; ++i)
+        *exponent |= (uint16_t)*enc++ << (8 * i);
+    return enc;
+}
+
 // fp2_t
 
 static byte_t *
@@ -176,10 +193,11 @@ signature_to_bytes(byte_t *enc, const signature_t *sig)
 
     enc = fp2_to_bytes(enc, &sig->E_aux_A);
 
-    *enc++ = sig->backtracking;
-    *enc++ = sig->two_resp_length;
+    assert((unsigned)sig->backtracking + sig->two_resp_length <= SQIsign_response_length);
+    enc = encode_response_exponent(enc, sig->backtracking);
+    enc = encode_response_exponent(enc, sig->two_resp_length);
 
-    size_t nbytes = (SQIsign_response_length + 9) / 8;
+    size_t nbytes = RESPONSE_MATRIX_ENTRY_BYTES;
     encode_digits(enc, sig->mat_Bchall_can_to_B_chall[0][0], nbytes);
     enc += nbytes;
     encode_digits(enc, sig->mat_Bchall_can_to_B_chall[0][1], nbytes);
@@ -212,10 +230,12 @@ signature_from_bytes(signature_t *sig, const byte_t *enc)
         return 0;
     }
 
-    sig->backtracking = *enc++;
-    sig->two_resp_length = *enc++;
+    enc = decode_response_exponent(&sig->backtracking, enc);
+    enc = decode_response_exponent(&sig->two_resp_length, enc);
+    if ((unsigned)sig->backtracking + sig->two_resp_length > SQIsign_response_length)
+        return 0;
 
-    size_t nbytes = (SQIsign_response_length + 9) / 8;
+    size_t nbytes = RESPONSE_MATRIX_ENTRY_BYTES;
     decode_digits(sig->mat_Bchall_can_to_B_chall[0][0], enc, nbytes, NWORDS_ORDER);
     enc += nbytes;
     decode_digits(sig->mat_Bchall_can_to_B_chall[0][1], enc, nbytes, NWORDS_ORDER);

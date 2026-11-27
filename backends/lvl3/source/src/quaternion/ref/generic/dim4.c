@@ -306,173 +306,78 @@ ibz_inv_dim4_make_coeff_mpm(ibz_t *coeff,
     ibz_finalize(&sum);
 }
 
-// Method from https://www.geometrictools.com/Documentation/LaplaceExpansionTheorem.pdf 3rd of May
-// 2023, 16h15 CEST
-#if defined(__GNUC__) || defined(__clang__)
-__attribute__((noinline))
-#endif
 static int
-ibz_mat_4x4_det_only(ibz_t *det, const ibz_mat_4x4_t *mat)
+minor_2x2(ibz_t *det, const ibz_t *a, const ibz_t *b, const ibz_t *c, const ibz_t *d)
 {
-    ibz_t prod, work_det;
-    ibz_t s[6];
-    ibz_t c[6];
-
-    for (int i = 0; i < 6; i++) {
-        ibz_init(&s[i]);
-        ibz_init(&c[i]);
-    }
-    ibz_init(&prod);
-    ibz_init(&work_det);
-
-    /* Determinant callers do not need the 4x4 adjugate.  Keep this in a
-     * separate noinline frame so a NULL `inv` does not reserve that matrix
-     * for every parent frame on the deeply nested Qlapoti path. */
-    for (int i = 0; i < 3; i++) {
-        ibz_mat_2x2_det_from_ibz(
-            &s[i], &(*mat)[0][0], &(*mat)[0][i + 1],
-            &(*mat)[1][0], &(*mat)[1][i + 1]);
-        ibz_mat_2x2_det_from_ibz(
-            &c[i], &(*mat)[2][0], &(*mat)[2][i + 1],
-            &(*mat)[3][0], &(*mat)[3][i + 1]);
-    }
-    for (int i = 0; i < 2; i++) {
-        ibz_mat_2x2_det_from_ibz(
-            &s[3 + i], &(*mat)[0][1], &(*mat)[0][2 + i],
-            &(*mat)[1][1], &(*mat)[1][2 + i]);
-        ibz_mat_2x2_det_from_ibz(
-            &c[3 + i], &(*mat)[2][1], &(*mat)[2][2 + i],
-            &(*mat)[3][1], &(*mat)[3][2 + i]);
-    }
-    ibz_mat_2x2_det_from_ibz(
-        &s[5], &(*mat)[0][2], &(*mat)[0][3],
-        &(*mat)[1][2], &(*mat)[1][3]);
-    ibz_mat_2x2_det_from_ibz(
-        &c[5], &(*mat)[2][2], &(*mat)[2][3],
-        &(*mat)[3][2], &(*mat)[3][3]);
-
-    ibz_set(&work_det, 0);
-    for (int i = 0; i < 6; i++) {
-        ibz_mul(&prod, &s[i], &c[5 - i]);
-        if (i != 1 && i != 4)
-            ibz_add(&work_det, &work_det, &prod);
-        else
-            ibz_sub(&work_det, &work_det, &prod);
-    }
-
-    const int invertible = !ibz_is_zero(&work_det);
-    if (det != NULL)
-        ibz_copy(det, &work_det);
-
-    ibz_finalize(&work_det);
-    ibz_finalize(&prod);
-    for (int i = 0; i < 6; i++) {
-        ibz_finalize(&s[i]);
-        ibz_finalize(&c[i]);
-    }
-    return invertible;
+    ibz_t ad, bc;
+    return ibz_mul_checked(&ad, a, d) && ibz_mul_checked(&bc, b, c) &&
+           ibz_sub_checked(det, &ad, &bc);
 }
 
+/* Laplace expansion along the first two rows. Compute the adjugate only
+ * when the caller needs it. None of the signed minors may wrap. */
 int
 ibz_mat_4x4_inv_with_det_as_denom(ibz_mat_4x4_t *inv, ibz_t *det, const ibz_mat_4x4_t *mat)
 {
-    if (inv == NULL)
-        return ibz_mat_4x4_det_only(det, mat);
-
-    ibz_t prod, work_det;
-    ibz_mat_4x4_t work;
-    ibz_t s[6];
-    ibz_t c[6];
+    ibz_t top[6], bottom[6], value, product;
+    int index = 0;
+    for (int a = 0; a < 4; a++) {
+        for (int b = a + 1; b < 4; b++, index++) {
+            if (!minor_2x2(&top[index], &(*mat)[0][a], &(*mat)[0][b], &(*mat)[1][a], &(*mat)[1][b]) ||
+                !minor_2x2(&bottom[index], &(*mat)[2][a], &(*mat)[2][b], &(*mat)[3][a], &(*mat)[3][b]))
+                return 0;
+        }
+    }
+    ibz_set(&value, 0);
     for (int i = 0; i < 6; i++) {
-        ibz_init(&(s[i]));
-        ibz_init(&(c[i]));
+        if (!ibz_mul_checked(&product, &top[i], &bottom[5 - i]))
+            return 0;
+        if (!(i == 1 || i == 4 ? ibz_sub_checked(&value, &value, &product)
+                               : ibz_add_checked(&value, &value, &product)))
+            return 0;
     }
-    ibz_mat_4x4_init(&work);
-    ibz_init(&prod);
-    ibz_init(&work_det);
 
-    // compute some 2x2 minors, store them in s and c
-    for (int i = 0; i < 3; i++) {
-        ibz_mat_2x2_det_from_ibz(&(s[i]), &((*mat)[0][0]), &((*mat)[0][i + 1]), &((*mat)[1][0]), &((*mat)[1][i + 1]));
-        ibz_mat_2x2_det_from_ibz(&(c[i]), &((*mat)[2][0]), &((*mat)[2][i + 1]), &((*mat)[3][0]), &((*mat)[3][i + 1]));
-    }
-    for (int i = 0; i < 2; i++) {
-        ibz_mat_2x2_det_from_ibz(
-            &(s[3 + i]), &((*mat)[0][1]), &((*mat)[0][2 + i]), &((*mat)[1][1]), &((*mat)[1][2 + i]));
-        ibz_mat_2x2_det_from_ibz(
-            &(c[3 + i]), &((*mat)[2][1]), &((*mat)[2][2 + i]), &((*mat)[3][1]), &((*mat)[3][2 + i]));
-    }
-    ibz_mat_2x2_det_from_ibz(&(s[5]), &((*mat)[0][2]), &((*mat)[0][3]), &((*mat)[1][2]), &((*mat)[1][3]));
-    ibz_mat_2x2_det_from_ibz(&(c[5]), &((*mat)[2][2]), &((*mat)[2][3]), &((*mat)[3][2]), &((*mat)[3][3]));
-
-    // compute det
-    ibz_set(&work_det, 0);
-    for (int i = 0; i < 6; i++) {
-        ibz_mul(&prod, &(s[i]), &(c[5 - i]));
-        if ((i != 1) && (i != 4)) {
-            ibz_add(&work_det, &work_det, &prod);
-        } else {
-            ibz_sub(&work_det, &work_det, &prod);
-        }
-    }
-    // compute transposed adjugate
-    for (int j = 0; j < 4; j++) {
-        for (int k = 0; k < 2; k++) {
-            if ((k + j + 1) % 2 == 1) {
-                ibz_inv_dim4_make_coeff_pmp(&(work[j][k]),
-                                            &((*mat)[1 - k][(j == 0)]),
-                                            &(c[6 - j - (j == 0)]),
-                                            &((*mat)[1 - k][2 - (j > 1)]),
-                                            &(c[4 - j - (j == 1)]),
-                                            &((*mat)[1 - k][3 - (j == 3)]),
-                                            &(c[3 - j - (j == 1) - (j == 2)]));
-            } else {
-                ibz_inv_dim4_make_coeff_mpm(&(work[j][k]),
-                                            &((*mat)[1 - k][(j == 0)]),
-                                            &(c[6 - j - (j == 0)]),
-                                            &((*mat)[1 - k][2 - (j > 1)]),
-                                            &(c[4 - j - (j == 1)]),
-                                            &((*mat)[1 - k][3 - (j == 3)]),
-                                            &(c[3 - j - (j == 1) - (j == 2)]));
-            }
-        }
-        for (int k = 2; k < 4; k++) {
-            if ((k + j + 1) % 2 == 1) {
-                ibz_inv_dim4_make_coeff_pmp(&(work[j][k]),
-                                            &((*mat)[3 - (k == 3)][(j == 0)]),
-                                            &(s[6 - j - (j == 0)]),
-                                            &((*mat)[3 - (k == 3)][2 - (j > 1)]),
-                                            &(s[4 - j - (j == 1)]),
-                                            &((*mat)[3 - (k == 3)][3 - (j == 3)]),
-                                            &(s[3 - j - (j == 1) - (j == 2)]));
-            } else {
-                ibz_inv_dim4_make_coeff_mpm(&(work[j][k]),
-                                            &((*mat)[3 - (k == 3)][(j == 0)]),
-                                            &(s[6 - j - (j == 0)]),
-                                            &((*mat)[3 - (k == 3)][2 - (j > 1)]),
-                                            &(s[4 - j - (j == 1)]),
-                                            &((*mat)[3 - (k == 3)][3 - (j == 3)]),
-                                            &(s[3 - j - (j == 1) - (j == 2)]));
-            }
-        }
-    }
-    int invertible = !ibz_is_zero(&work_det);
     if (inv != NULL) {
-        // put transposed adjugate in result, or 0 if no inverse
-        ibz_set(&prod, invertible);
-        ibz_mat_4x4_scalar_mul(inv, &prod, &work);
+        ibz_mat_4x4_t adjugate = { 0 };
+        if (!ibz_is_zero(&value)) {
+            for (int row = 0; row < 4; row++) {
+                const int paired_row = row ^ 1;
+                const ibz_t *minors = row < 2 ? bottom : top;
+                for (int col = 0; col < 4; col++) {
+                    const int cols[3] = {col != 0 ? 0 : 1, col < 2 ? 2 : 1, col != 3 ? 3 : 2};
+                    const int minor_index[3] = {6 - col - (col == 0), 4 - col - (col == 1),
+                                                3 - col - (col == 1) - (col == 2)};
+                    ibz_t *entry = &adjugate[col][row];
+                    for (int i = 0; i < 3; i++) {
+                        if (!ibz_mul_checked(&product, &(*mat)[paired_row][cols[i]], &minors[minor_index[i]]) ||
+                            !((row + col + i) % 2 ? ibz_sub_checked(entry, entry, &product)
+                                                  : ibz_add_checked(entry, entry, &product)))
+                            return 0;
+                    }
+                }
+            }
+        }
+        ibz_mat_4x4_copy(inv, &adjugate);
     }
-    // output det
     if (det != NULL)
-        ibz_copy(det, &work_det);
-    for (int i = 0; i < 6; i++) {
-        ibz_finalize(&s[i]);
-        ibz_finalize(&c[i]);
+        ibz_copy(det, &value);
+    return !ibz_is_zero(&value);
+}
+
+int
+ibz_mat_4x4_eval_checked(ibz_vec_4_t *res, const ibz_mat_4x4_t *mat, const ibz_vec_4_t *vec)
+{
+    ibz_vec_4_t candidate = { 0 };
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            ibz_t product;
+            if (!ibz_mul_checked(&product, &(*mat)[i][j], &(*vec)[j]) ||
+                !ibz_add_checked(&candidate[i], &candidate[i], &product))
+                return 0;
+        }
     }
-    ibz_mat_4x4_finalize(&work);
-    ibz_finalize(&work_det);
-    ibz_finalize(&prod);
-    return invertible;
+    ibz_vec_4_copy(res, &candidate);
+    return 1;
 }
 
 // matrix evaluation

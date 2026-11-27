@@ -21,6 +21,8 @@ If not, see <https://www.gnu.org/licenses/>. */
 
 #include <math.h>   /* for round, floor, ceil */
 #include <limits.h>
+#include <float.h>
+#include <fenv.h>
 #include "intbig.h"
 
 /* if you change the version, please change it in Makefile too */
@@ -71,6 +73,8 @@ If not, see <https://www.gnu.org/licenses/>. */
    1/2 <= m < 1 */
 /* DPE_ROUND(DPE_DOUBLE x) returns the nearest integer to x */
 #if defined(DPE_USE_DOUBLE)
+_Static_assert(FLT_RADIX == 2 && DBL_MANT_DIG == 53 && FLT_EVAL_METHOD == 0,
+               "LLL requires binary64 operations without excess precision");
 # define DPE_DOUBLE double /* mantissa type */
 # define DPE_BITSIZE 53 /* bitsize of DPE_DOUBLE */
 # define DPE_2_POW_BITSIZE 0x1P53
@@ -124,6 +128,7 @@ If not, see <https://www.gnu.org/licenses/>. */
 #else
 # error "neither DPE_USE_DOUBLE, nor DPE_USE_LONGDOUBLE, nor DPE_USE_FLOAT128 is defined"
 #endif
+_Static_assert(DPE_BITSIZE == 53, "Section 4 requires a 53-bit DPE significand");
 
 /* If no C99, do what we can */
 #ifndef DPE_DEFINE_ROUND_TRUNC
@@ -186,7 +191,7 @@ dpe_clear (dpe_t x DPE_UNUSED_ATTR)
 
 /* set x to y */
 DPE_INLINE void
-dpe_set (dpe_t x, dpe_t y)
+dpe_set (dpe_t x, const dpe_t y)
 {
   DPE_MANT(x) = DPE_MANT(y);
   DPE_EXP(x) = DPE_EXP(y);
@@ -238,20 +243,20 @@ dpe_normalize (dpe_t x)
 }
 
 #if defined(DPE_USE_DOUBLE) 
-static const double dpe_scale_tab[54] = {
+static const double dpe_scale_tab[55] = {
   0x1P0, 0x1P-1, 0x1P-2, 0x1P-3, 0x1P-4, 0x1P-5, 0x1P-6, 0x1P-7, 0x1P-8, 
   0x1P-9, 0x1P-10, 0x1P-11, 0x1P-12, 0x1P-13, 0x1P-14, 0x1P-15, 0x1P-16, 
   0x1P-17, 0x1P-18, 0x1P-19, 0x1P-20, 0x1P-21, 0x1P-22, 0x1P-23, 0x1P-24,
   0x1P-25, 0x1P-26, 0x1P-27, 0x1P-28, 0x1P-29, 0x1P-30, 0x1P-31, 0x1P-32,
   0x1P-33, 0x1P-34, 0x1P-35, 0x1P-36, 0x1P-37, 0x1P-38, 0x1P-39, 0x1P-40,
   0x1P-41, 0x1P-42, 0x1P-43, 0x1P-44, 0x1P-45, 0x1P-46, 0x1P-47, 0x1P-48,
-  0x1P-49, 0x1P-50, 0x1P-51, 0x1P-52, 0x1P-53};
+  0x1P-49, 0x1P-50, 0x1P-51, 0x1P-52, 0x1P-53, 0x1P-54};
 #endif
 
 DPE_INLINE DPE_DOUBLE 
 dpe_scale (DPE_DOUBLE d, int s)
 {
-  /* -DPE_BITSIZE < s <= 0 and 1/2 <= d < 1 */
+  /* -(DPE_BITSIZE + 1) <= s <= 0 */
 #if defined(DPE_USE_DOUBLE)
   return d * dpe_scale_tab [-s];
 #else /* portable code */
@@ -322,7 +327,7 @@ dpe_get_ld (dpe_t x)
 }
 
 void dpe_set_z(dpe_t x, const ibz_t *y);
-void dpe_get_z(ibz_t *x, const dpe_t y);
+int dpe_get_z(ibz_t *x, const dpe_t y);
 
 
 #if defined(__GMP_H__) || defined(__MINI_GMP_H__)
@@ -371,14 +376,15 @@ dpe_get_z_exp (mpz_t x, dpe_t y)
 DPE_INLINE void
 dpe_add (dpe_t x, dpe_t y, dpe_t z)
 {
-  if (DPE_UNLIKELY (DPE_EXP(y) > DPE_EXP(z) + DPE_BITSIZE))
-    /* |z| < 1/2*ulp(y), thus o(y+z) = y */
+  /* At a binade boundary the predecessor spacing can be half the successor
+     spacing. Keep the extra alignment bit for an opposite-sign addend. */
+  if (DPE_UNLIKELY (DPE_EXP(y) > DPE_EXP(z) + DPE_BITSIZE + 1))
     dpe_set (x, y);
-  else if (DPE_UNLIKELY (DPE_EXP(z) > DPE_EXP(y) + DPE_BITSIZE))
+  else if (DPE_UNLIKELY (DPE_EXP(z) > DPE_EXP(y) + DPE_BITSIZE + 1))
     dpe_set (x, z);
   else
     {
-      DPE_EXP_T d = DPE_EXP(y) - DPE_EXP(z); /* |d| <= DPE_BITSIZE */
+      DPE_EXP_T d = DPE_EXP(y) - DPE_EXP(z);
 
       if (d >= 0)
         {
@@ -398,14 +404,13 @@ dpe_add (dpe_t x, dpe_t y, dpe_t z)
 DPE_INLINE void
 dpe_sub (dpe_t x, dpe_t y, dpe_t z)
 {
-  if (DPE_UNLIKELY (DPE_EXP(y) > DPE_EXP(z) + DPE_BITSIZE))
-    /* |z| < 1/2*ulp(y), thus o(y-z) = y */
+  if (DPE_UNLIKELY (DPE_EXP(y) > DPE_EXP(z) + DPE_BITSIZE + 1))
     dpe_set (x, y);
-  else if (DPE_UNLIKELY (DPE_EXP(z) > DPE_EXP(y) + DPE_BITSIZE))
+  else if (DPE_UNLIKELY (DPE_EXP(z) > DPE_EXP(y) + DPE_BITSIZE + 1))
     dpe_neg (x, z);
   else
     {
-      DPE_EXP_T d = DPE_EXP(y) - DPE_EXP(z); /* |d| <= DPE_BITSIZE */
+      DPE_EXP_T d = DPE_EXP(y) - DPE_EXP(z);
 
       if (d >= 0)
         {
@@ -426,6 +431,12 @@ DPE_INLINE void
 dpe_mul (dpe_t x, dpe_t y, dpe_t z)
 {
   DPE_MANT(x) = DPE_MANT(y) * DPE_MANT(z);
+  /* Zero uses DPE_EXPMIN as a sentinel, not an arithmetic exponent. */
+  if (DPE_MANT(x) == 0.0)
+    {
+      DPE_EXP(x) = DPE_EXPMIN;
+      return;
+    }
   DPE_EXP(x) = DPE_EXP(y) + DPE_EXP(z);
   dpe_normalize (x);
 }
@@ -454,6 +465,12 @@ DPE_INLINE void
 dpe_div (dpe_t x, dpe_t y, dpe_t z)
 {
   DPE_MANT(x) = DPE_MANT(y) / DPE_MANT(z);
+  /* Avoid subtracting from the zero sentinel before normalization. */
+  if (DPE_MANT(x) == 0.0)
+    {
+      DPE_EXP(x) = DPE_EXPMIN;
+      return;
+    }
   DPE_EXP(x) = DPE_EXP(y) - DPE_EXP(z);
   dpe_normalize (x);
 }
@@ -563,9 +580,9 @@ dpe_cmp_si (dpe_t x, long d)
   return dpe_cmp (x, y);
 }
 
-/* set x to integer nearest to y */
+/* Round to the nearest integer, breaking ties toward an even integer. */
 DPE_INLINE void
-dpe_round (dpe_t x, dpe_t y)
+dpe_round (dpe_t x, const dpe_t y)
 {
   if (DPE_EXP(y) < 0) /* |y| < 1/2 */
     dpe_set_ui (x, 0);
@@ -573,9 +590,12 @@ dpe_round (dpe_t x, dpe_t y)
     dpe_set (x, y);
   else
     {
-      DPE_DOUBLE d;
-      d = DPE_LDEXP(DPE_MANT(y), DPE_EXP(y));
-      dpe_set_d (x, DPE_ROUND(d));
+      double magnitude = DPE_LDEXP(fabs(DPE_MANT(y)), DPE_EXP(y));
+      double whole = floor(magnitude);
+      double fraction = magnitude - whole;
+      if (fraction > 0.5 || (fraction == 0.5 && ((uint64_t)whole & 1)))
+        whole += 1.0;
+      dpe_set_d(x, copysign(whole, DPE_MANT(y)));
     }
 }
 

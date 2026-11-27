@@ -1,0 +1,102 @@
+{
+  "challenge_exponent": 324,
+  "challenge_space_bits": 161,
+  "effective_challenge_bits": 128,
+  "encoding_bytes": {
+    "FP_ENCODED_BYTES": 48,
+    "PUBLICKEY_BYTES": 97,
+    "RESPONSE_EXPONENT_BYTES": 1,
+    "RESPONSE_MATRIX_ENTRY_BYTES": 21,
+    "SECRETKEY_BYTES": 501,
+    "SECRET_IDEAL_BYTES": 48,
+    "SIGNATURE_BYTES": 200
+  },
+  "f": 324,
+  "generated_sha256": {
+    "../../../nistapi/lvl1/api.h": "7a386889e2ec4e270ed33329d6c2a41198f75d4a27d3a9089d5e0d8860ea2c7c",
+    "e0_basis.c": "5820b340a164a74cd250bd01d8bb4f716b12b13c2ec4c696312beedb77e89d70",
+    "ec_params.c": "0b21ea624239408a1f093f9e4923cf5abe5d609ada6d3d255adf61be04352230",
+    "endomorphism_action.c": "81b8767e62618e0af9cc166470d28012523e72abaa72c69bb3aa92125e771561",
+    "hd_splitting_transforms.c": "9f523ad63297780cb4b3096bc56eca5f17a1fb5f7b242950eb0aa963315c9066",
+    "include/e0_basis.h": "cc68b12e6c4e2cfc4e8b7e02cbedfb4950d7f5c27bc9afca720f8ea30c882b94",
+    "include/ec_params.h": "f5c3bd41d0a57cc20d94b7753c9419d1876967bbd5fb863a128c0fec48d410f0",
+    "include/encoded_sizes.h": "d33fbfde7775d56a45a88f5741fcf60e4f985e9f0a18cd0d92b6d8aafbb9b35d",
+    "include/endomorphism_action.h": "57d9e4c850eb3d498e80558c284d4864cfd23fd380313829577f7026a87cc32d",
+    "include/fp_constants.h": "ce9336d437350ec64e21d24d06ead94fe4f088f9bf780b99d7d7faa96404ac4c",
+    "include/hd_splitting_transforms.h": "13bfb8673b9a58998d69d0cf4fb545a2f81fd4804f2e9f44c62971a4bc703693",
+    "include/quaternion_constants.h": "07fdd6df1c451389ee2b89cf38a44cc31878cf82e880329ef0fedd7e78e867ea",
+    "include/quaternion_data.h": "e33923ea0d81ba589984c76f3a22bf1ae7754a5fc637ab8c91ac7502167aa46c",
+    "include/torsion_constants.h": "35d0fff76d9c344585606c8fef070fe9f675a147c822ba895f322e2d348fc441",
+    "quaternion_data.c": "c581537ebc25e6e26b49711b7fa807773102f91f6ff519a4d7595878b7449447",
+    "sqisign_parameters.txt": "b65fe16393883d06e6340fef788adcddb4c2dd3bb621df414396a17081d90b2e",
+    "torsion_constants.c": "da471a335e942fc60345dd4346e8c1a7550284483bced342a7920a9335c3e181"
+  },
+  "generation": {
+    "deuring_2d": "4f13120e6f4e2cfdbd81e94671fbf7ebeaf8be28",
+    "endomorphism_seed": "seed + q",
+    "sage_version": "10.8",
+    "seed": 1,
+    "two_isogenies": "0ea5020effabde4bdc5e6f425ba5b94209f0e58b"
+  },
+  "hash_iterations": 1,
+  "integer_limb_bits": 64,
+  "integer_limbs": 34,
+  "keygen_magnitude_bits": 1965,
+  "lambda": 128,
+  "level": "lvl1",
+  "mixing_degree": "0x2fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff000000000000000000000000000000000000000000000000000000000000009b",
+  "mixing_degree_bits": 582,
+  "orders": [
+    {
+      "connecting_denominator": 2,
+      "connecting_norm": "1",
+      "order_denominator": 2,
+      "q": 1
+    },
+    {
+      "connecting_denominator": 2,
+      "connecting_norm": "16955181472520143986252515376389574713714188414933",
+      "order_denominator": 52570516546705390291742642376878861594020285447064,
+      "q": 17
+    },
+    {
+      "connecting_denominator": 2,
+      "connecting_norm": "12540237511039078682623214631697411092291809815331",
+      "order_denominator": 119407415171733224625166272952211214218491963961592,
+      "q": 29
+    },
+    {
+      "connecting_denominator": 2,
+      "connecting_norm": "2883341041806533637512322151238094409323527321013",
+      "order_denominator": 5766682083613067275024644302476188818647054642026,
+      "q": 53
+    },
+    {
+      "connecting_denominator": 2,
+      "connecting_norm": "9602346963849383063182037350442922118425284319639",
+      "order_denominator": 462492803863609204150486302581620253253269587698752,
+      "q": 73
+    },
+    {
+      "connecting_denominator": 2,
+      "connecting_norm": "2106872462589001375759462835209153233787927971987",
+      "order_denominator": 4213744925178002751518925670418306467575855943974,
+      "q": 101
+    },
+    {
+      "connecting_denominator": 2,
+      "connecting_norm": "20281707627374906695470998627554263573120765454809",
+      "order_denominator": 2683862666759577259380989678329368535937827877712,
+      "q": 113
+    }
+  ],
+  "p": "0x2fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "p_bits": 326,
+  "prime_verification": "Sage Integer.is_prime(proof=True) and Integer.next_prime(proof=True)",
+  "reference_radix": {
+    "32": 28,
+    "64": 55
+  },
+  "response_exponent": 163,
+  "sign_magnitude_bits": 2169
+}

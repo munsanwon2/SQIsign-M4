@@ -1,6 +1,7 @@
 {
   "cmake_compile_definitions": [
     "ENABLE_SIGN",
+    "HAVE_UINT128",
     "NDEBUG",
     "RADIX_32",
     "RANDOMBYTES_SYSTEM",
@@ -28,9 +29,13 @@
     "-Wno-unused-parameter",
     "-Wuninitialized",
     "-fPIC",
+    "-fexcess-precision=standard",
+    "-ffp-contract=off",
     "-flto=auto",
+    "-fno-fast-math",
     "-fno-fat-lto-objects",
     "-fno-strict-aliasing",
+    "-frounding-math",
     "-funroll-loops",
     "-fvisibility=hidden",
     "-std=c11",
@@ -45,13 +50,40 @@
   ],
   "excluded_translation_units": [
     {
-      "bytes": 12852,
+      "bytes": 525,
+      "path": "src/common/generic/mem.c",
+      "reason": "host free()-based secure cleanup; pqm4 must provide the no-heap secure-clear adapter",
+      "selected_by": [
+        "sqisign_common_sys"
+      ],
+      "sha256": "da1be61e9f3fb167946ce891c9c5e002f5be5b76ad1b4e98e7b4e4138e77087a"
+    },
+    {
+      "bytes": 12274,
       "path": "src/common/generic/randombytes_system.c",
       "reason": "host OS RNG; pqm4 must provide its hardware/platform randombytes adapter",
       "selected_by": [
         "sqisign_common_sys"
       ],
-      "sha256": "d0fbc474c225faa9339e830074490bfcbd1d588942e00e7216a0499fe80000e3"
+      "sha256": "6a9d7d88a38eff130ea76262813909ff15a8af4e5e7a16d3e696dab323fe9e9c"
+    },
+    {
+      "bytes": 1340,
+      "path": "src/common/generic/tools.c",
+      "reason": "host clock/stdio benchmarking helpers; no production library caller requires them",
+      "selected_by": [
+        "sqisign_common_sys"
+      ],
+      "sha256": "b5b4a53641e650bf1edacf2e0bba5f23c8e24be53078ba8287f810f040ebd63a"
+    },
+    {
+      "bytes": 4430,
+      "path": "src/quaternion/ref/generic/test/random_input_generation.c",
+      "reason": "test-only random fixture with malloc/stdio; currently listed by the upstream production CMake target but has no production caller",
+      "selected_by": [
+        "sqisign_quaternion_lvl3"
+      ],
+      "sha256": "089aa2b6b6614471cb5d609d6db5c21e1f2cd51f6a908b4bda1ad1faf5c05279"
     }
   ],
   "external_platform_requirements": [
@@ -66,19 +98,19 @@
   ],
   "headers": [
     {
-      "bytes": 524,
+      "bytes": 500,
       "path": "include/mem.h",
-      "sha256": "d6d23db333556abc30a44a9fe6b0b2a08c40e8f95c68cbf4b3f981035dab56d3"
+      "sha256": "1602be4a3926aedd692723d59753342b488c75da0e12acb176ba93eb7c5b0bf7"
     },
     {
-      "bytes": 3198,
+      "bytes": 3162,
       "path": "include/rng.h",
-      "sha256": "103187b851abad9a0661d1a70e10c5db674fbc31ac627dca4141f48975fa28b2"
+      "sha256": "4332dc3fe95ba85253231852f7884fe44771033ecb39195240988a25244d12b5"
     },
     {
-      "bytes": 2706,
+      "bytes": 2621,
       "path": "include/sig.h",
-      "sha256": "ada020f82073eb0d29d605ffda335204cf07046e7b0446ec8c88495f87003ec6"
+      "sha256": "ecc4eb5da70b73e0842d127a63493ce51b4cad5b47694c03f2d7d486c0b939f8"
     },
     {
       "bytes": 559,
@@ -86,174 +118,179 @@
       "sha256": "95ed81de33f7d869a6afa4141bf143cfd5b908f637db3806fe67dbdfa0f62482"
     },
     {
-      "bytes": 58140,
+      "bytes": 58291,
       "path": "include/sqisign_namespace.h",
-      "sha256": "118cbf0da0c405714f2c5a42f0bb184c67e20a7b8ead07fe193bcbabac7e0180"
+      "sha256": "a08695750019f0082abb81056eb94b014325452c1ecc1fa31120c34d6d07f886"
     },
     {
-      "bytes": 6020,
+      "bytes": 5849,
       "path": "src/common/generic/include/fips202.h",
-      "sha256": "8ffc7bac075ddd91d6d97906a27131a71eaa5f74dad4ef4248905e7385c058e3"
+      "sha256": "0c8ba23664e7c74eda5c349dfbe1adccad9d90395d48327617b4e49bfb5527f2"
     },
     {
-      "bytes": 1727,
+      "bytes": 1701,
       "path": "src/common/generic/include/tools.h",
-      "sha256": "53f1d2cb88c76c3ede7ed4995edb95609447a3ba45d041fe400713c34732bd32"
+      "sha256": "12ff2e90ec4082986c72ed7263e57eabcb86647ecd58200141c3883eef539bf0"
     },
     {
-      "bytes": 1026,
+      "bytes": 990,
       "path": "src/common/generic/include/tutil.h",
-      "sha256": "c9b7a4855db54a6dbab38a89a7448ae1d8e4012cf7f53bb139cf6cbf47dea524"
+      "sha256": "da8e5c3a23dbcbfa5034b5fa64b26a159c6cba8eb90df25b68385ae0d2dc1953"
     },
     {
-      "bytes": 2901,
+      "bytes": 2819,
       "path": "src/ec/ref/include/biextension.h",
-      "sha256": "16b92738a5a3c85a6c5e55bb1ff169f223767f2b9937a6c538ed1a57f6eeb71f"
+      "sha256": "aee85c11d442f5b86deaa7d64f248ce790c17b01713121e9cdd8eb8ddf973201"
     },
     {
-      "bytes": 18170,
+      "bytes": 17503,
       "path": "src/ec/ref/include/ec.h",
-      "sha256": "2d977f30de71929a1bd1f63816d6a4ad250a71c7ed9e75911cd002ee4a981467"
+      "sha256": "d8b92dd515be255f9d69e135ed8f78ebe23a7310c22fe3e1899420c1770c280d"
     },
     {
-      "bytes": 1022,
+      "bytes": 994,
       "path": "src/ec/ref/include/isog.h",
-      "sha256": "67cff607515141f15385051ab31b49c2a13a4fb2c047afabce0a647a5399e5cb"
+      "sha256": "58f16b0ff3f27fd7dbb35252d52418e5498ef63cad2cba3999b7e094a7f29f09"
     },
     {
-      "bytes": 1561,
+      "bytes": 1513,
       "path": "src/gf/ref/include/fp.h",
-      "sha256": "1beb06af6b1915ba232c691f0447e1ab9f7176bebff94fa93703edc043249580"
+      "sha256": "961c5f25900fe37610484ae1289d680ca09b2e313ce1a1721ff557fd66138820"
     },
     {
-      "bytes": 1410,
+      "bytes": 1372,
       "path": "src/gf/ref/include/fp2.h",
-      "sha256": "cafc21c1845e21f731cbe2d4416cfdc037ed354769c8174caa0d070ad6404f0a"
+      "sha256": "e5d00e33164a62fc09b217325a8fbffe3de19373d8dec295ebc941e75fd42725"
     },
     {
-      "bytes": 13119,
+      "bytes": 12687,
       "path": "src/hd/ref/include/hd.h",
-      "sha256": "a093120a726461944337b650670dea3f97356e066115eb43331f49b1473fe357"
+      "sha256": "0e917661af025632f5e67fb38e6ca3f1f9b221d302b03bc199190c65327d70bc"
     },
     {
-      "bytes": 304,
+      "bytes": 286,
       "path": "src/hd/ref/lvlx/theta_isogenies.h",
-      "sha256": "70386e19ac01a636b6d2eea3c082c6e14133d011f8808582306f135b656f9e55"
+      "sha256": "a4c7b49b2493a74a3381cb3efd7a32ed6dafe0291e4cb8321fb6c49868d82496"
     },
     {
-      "bytes": 4683,
+      "bytes": 5018,
       "path": "src/hd/ref/lvlx/theta_schedule_de2.h",
-      "sha256": "2ab88f3ad15e99bd7f4d1fc11be55e2eaba17ab1f44769daa1bdbc061ea563e2"
+      "sha256": "f9e61e4f91c195065e9d3693fc5abcec76fd214ec89eaa2d9a33a8703cf09544"
     },
     {
-      "bytes": 3446,
+      "bytes": 3323,
       "path": "src/hd/ref/lvlx/theta_structure.h",
-      "sha256": "41f214e03fc78c6ad1f103b68a72f5bd23a6f232d911860f9b23c237b3e0d11d"
+      "sha256": "3b77330249fe813aff797a88dc6f86ecf3d393f79375468169a6619c1e8a0891"
     },
     {
-      "bytes": 11330,
+      "bytes": 10728,
       "path": "src/id2iso/ref/include/id2iso.h",
-      "sha256": "b5fe2c78318e1146530598355ca946cdb7345d691e2abe715608251c54e5f970"
+      "sha256": "2d259dd43ee53ecdfe51673933b01db747aef05898db94a173bb4ec5fa8b5846"
     },
     {
-      "bytes": 4798,
+      "bytes": 604,
+      "path": "src/id2iso/ref/lvlx/qlapoti_cornacchia_primes.inc",
+      "sha256": "bca712b7a58f12c57d6adac96cc1667ac1ee971b341517f23028bb1eac588ac7"
+    },
+    {
+      "bytes": 4616,
       "path": "src/mp/ref/generic/include/mp.h",
-      "sha256": "fd59ce7d0fdd34104d3d98f323fe02a626ccdf95e7f2f2f87e2bcd83c2ab8ffb"
+      "sha256": "585d498318a0f98f1b4c452e7097803ccbe50d2223b4ce6420ed1998fb72acb1"
     },
     {
-      "bytes": 84,
+      "bytes": 81,
       "path": "src/precomp/ref/lvl3/include/e0_basis.h",
-      "sha256": "652085b8fe1129484556e19204cf1778117ecfa3c1a3c38bb7cef8bf3d3507b2"
+      "sha256": "cc68b12e6c4e2cfc4e8b7e02cbedfb4950d7f5c27bc9afca720f8ea30c882b94"
     },
     {
-      "bytes": 224,
+      "bytes": 212,
       "path": "src/precomp/ref/lvl3/include/ec_params.h",
-      "sha256": "10c295f6858b5b8df7db5a5848e77412733b5115c9061cb0507d73c76b12d6ea"
+      "sha256": "37706173a01dbaac8527ea8b0dafad126770aa9130ea070b4d834586c26f4ba2"
     },
     {
-      "bytes": 344,
+      "bytes": 438,
       "path": "src/precomp/ref/lvl3/include/encoded_sizes.h",
-      "sha256": "691f8383d0c50d4faaab3948eeec7f76f99d1579f8ade94c140f32d43c18a472"
+      "sha256": "1e74c4d881e407202bc66998b1a81bd16bb3d81b45711a4e303dd56bb4703b1a"
     },
     {
-      "bytes": 1261,
+      "bytes": 1230,
       "path": "src/precomp/ref/lvl3/include/endomorphism_action.h",
-      "sha256": "5df8f6475d968bf652c1ba1a5d6836906c5e3fbe7a6789ace6827c51f939ced4"
+      "sha256": "e50b55ec91430adcef8ae73637882d954bf3634b4bfb97022edf6442e6918c43"
     },
     {
-      "bytes": 336,
+      "bytes": 361,
       "path": "src/precomp/ref/lvl3/include/fp_constants.h",
-      "sha256": "3c2d29c658409a3d0744b31219105b6dfdb7d61f2dbe8f33b7afcba5a6c1f2d0"
+      "sha256": "54c1b59025d5dccd75075b5fadd310e894deb36ab0be43852455c9c13ea03340"
     },
     {
-      "bytes": 458,
+      "bytes": 440,
       "path": "src/precomp/ref/lvl3/include/hd_splitting_transforms.h",
-      "sha256": "76fbbc75a609eb341cc997fecffda45fe58a4f0270120cb6a3322c08c1dab518"
+      "sha256": "13bfb8673b9a58998d69d0cf4fb545a2f81fd4804f2e9f44c62971a4bc703693"
     },
     {
-      "bytes": 360,
+      "bytes": 253,
       "path": "src/precomp/ref/lvl3/include/quaternion_constants.h",
-      "sha256": "45609ff03b0b29d7feab5310fee4444a0a161135c41bf16fc6f24f902f55f06b"
+      "sha256": "22122c2b2826692d51c9ec15118f81cb3f28b1e73ee5448b65e1db4b46714b0d"
     },
     {
-      "bytes": 712,
+      "bytes": 588,
       "path": "src/precomp/ref/lvl3/include/quaternion_data.h",
-      "sha256": "162845a810c15c28ac52ac20a522b017ea23e001bbecc59d850a040e93a0bfed"
+      "sha256": "c5d42208278ee8b1d69f6db54d11ff88323a13bf29afaa47824c8cd6f1e26286"
     },
     {
-      "bytes": 273,
+      "bytes": 199,
       "path": "src/precomp/ref/lvl3/include/torsion_constants.h",
-      "sha256": "8aabee521f82824d3821e9315d0c9e3287f87fce767be8631f00379bad7ec35a"
+      "sha256": "b3b5ed82734b51f65ef2c917dea131a299e281051bb63ce00325bdc4b5d7a648"
     },
     {
-      "bytes": 8459,
+      "bytes": 8636,
       "path": "src/quaternion/ref/generic/include/intbig.h",
-      "sha256": "270c084b2da653bb1b9158b3fbd79de862646ee668294533b6c2cd6ff4a3b204"
+      "sha256": "224b67133f057ec9af34af4674e6e008d8b0669272ad704403260cad1a86f300"
     },
     {
-      "bytes": 32911,
+      "bytes": 32942,
       "path": "src/quaternion/ref/generic/include/quaternion.h",
-      "sha256": "fdeb0678348ba5fbaf04f568adf9325c02129fa5128a3bc03ad6dd590ccc189f"
+      "sha256": "25217d9430d8a636bd78120c575efe45b8557faa7a4390c52360272698201c2e"
     },
     {
-      "bytes": 16712,
+      "bytes": 16917,
       "path": "src/quaternion/ref/generic/internal_quaternion_headers/dpe.h",
-      "sha256": "fd19601626c58e9664d57a0f1987f4e13adbe4be5ac4d6fd6c0e21fea6faf64b"
+      "sha256": "d4af961b85b6917ebb9a74d520d03e9a9acb9c7e994af05dfbaabb4ae9b322ed"
     },
     {
-      "bytes": 2448,
+      "bytes": 2355,
       "path": "src/quaternion/ref/generic/internal_quaternion_headers/hnf_internal.h",
-      "sha256": "72025eed5020ba825d510238d2b2b898c6a9e0883ed65312e4f4b917b6e7e522"
+      "sha256": "bfc6e1b279012f6fc4b7bcabd9edc0cdb1286567669827ae49778b8f3e09df40"
     },
     {
-      "bytes": 6304,
+      "bytes": 6057,
       "path": "src/quaternion/ref/generic/internal_quaternion_headers/intbig_internal.h",
-      "sha256": "fd6138cdc91263047f295dda5c38b7f454b3f3cdfeecd2092803f7bd00141e9a"
+      "sha256": "535dd86f2160a61b13b50bbbd04b153d257dc7505380bfc2d2512fcf31e586ba"
     },
     {
-      "bytes": 35610,
+      "bytes": 35399,
       "path": "src/quaternion/ref/generic/internal_quaternion_headers/internal.h",
-      "sha256": "23b8f98ced017b09355539e1400fbf24dd0bd7ad8c719cf1c66ece414a4f947f"
+      "sha256": "3fdbd49ef3129af380a5f49d4f6c10b662e4ddbb1bd1edda759fcad6d5607f9a"
     },
     {
-      "bytes": 8048,
+      "bytes": 8268,
       "path": "src/quaternion/ref/generic/internal_quaternion_headers/lll_internals.h",
-      "sha256": "298581c263ba654c04e7deb41c16ac0ed24efb6265561fe1c1741954228f55a8"
+      "sha256": "a465b42b21735342f6e9680ff769eef61d06460277176e2f385549b199e1f105"
     },
     {
-      "bytes": 3582,
+      "bytes": 3490,
       "path": "src/quaternion/ref/generic/internal_quaternion_headers/mlll_internals.h",
-      "sha256": "1f87443c9fa26b0fe07eb04a4c9d10175db9eb25e8e6feecd7c6b7115c8219b9"
+      "sha256": "20e385f0de5a9d331e346365af66db79130682022fc6d9df624f30de88e50c01"
     },
     {
-      "bytes": 2726,
+      "bytes": 2627,
       "path": "src/signature/ref/include/signature.h",
-      "sha256": "2ac98cf98e3c705221a8430b3199a7250f408f040bf3a446b796c4ef6a5caeb7"
+      "sha256": "ea843e2a545717970d280df8a551b35bcb4be422c9f6550e02d495216eebe99c"
     },
     {
-      "bytes": 3702,
+      "bytes": 3565,
       "path": "src/verification/ref/include/verification.h",
-      "sha256": "7613ae22328e97fd319496f77bc68081e758f5ebb5bb3310c34007311b65ae47"
+      "sha256": "22f175783a1f0eb11720d73b314be918d8940aa284f776661328926829d11eff"
     }
   ],
   "include_directories": [
@@ -307,12 +344,16 @@
     "src/verification/ref/include"
   ],
   "pqm4_compile_options": [
+    "-fexcess-precision=standard",
+    "-ffp-contract=off",
+    "-fno-fast-math",
     "-fno-strict-aliasing",
+    "-frounding-math",
     "-funroll-loops",
     "-fvisibility=hidden"
   ],
   "pqm4_compile_policy": {
-    "definitions": "CMake target-closure definitions except host RNG and test-count macros",
+    "definitions": "CMake target-closure definitions except host RNG, native int128 probe, and test macros",
     "include_directories": "existing source-tree include directories selected by the CMake target closure",
     "options": "only target-independent semantic options; pqm4 retains ownership of optimization, language-standard, diagnostics, ABI, and CPU flags"
   },
@@ -380,404 +421,404 @@
   },
   "translation_units": [
     {
-      "bytes": 28576,
+      "bytes": 27700,
       "path": "src/common/generic/fips202.c",
       "selected_by": [
         "sqisign_common_sys"
       ],
-      "sha256": "089b7144789490b60a1df91f0d8acd9ed55578c960d8c545a5e10b2dd8b263a9"
+      "sha256": "20819b4a67447c68604624f78bdae62662cc7c6954e42ed5001bd1d365040c8e"
     },
     {
-      "bytes": 15612,
+      "bytes": 15142,
       "path": "src/ec/ref/lvlx/basis.c",
       "selected_by": [
         "sqisign_ec_lvl3"
       ],
-      "sha256": "3647f13c1c4701e79f6885e59dbe03152008f4a15bfc48510fea726d9a4e397e"
+      "sha256": "ead59a0e324beb3f45282896dcd0194bc757c6d196d706159f52276534b9361d"
     },
     {
-      "bytes": 25179,
+      "bytes": 24527,
       "path": "src/ec/ref/lvlx/biextension.c",
       "selected_by": [
         "sqisign_ec_lvl3"
       ],
-      "sha256": "7bbdd31c003e859b37c2d4ec6b711c5ee5d0b363a92fb9491eeb2f52fd350b59"
+      "sha256": "c1f630e3f033552349b5165451ed398166de8a47088056c32d96e3f9ec18292b"
     },
     {
-      "bytes": 21165,
+      "bytes": 20503,
       "path": "src/ec/ref/lvlx/ec.c",
       "selected_by": [
         "sqisign_ec_lvl3"
       ],
-      "sha256": "19c854357af6d4e8c8b7184149c6f587c32c68ae4f3230e52f6bfd239c76a0a8"
+      "sha256": "09d6858d1ba8c7482a06899bda2052e570a04ebc74571e51b791ba62938cc967"
     },
     {
-      "bytes": 12372,
+      "bytes": 12037,
       "path": "src/ec/ref/lvlx/ec_jac.c",
       "selected_by": [
         "sqisign_ec_lvl3"
       ],
-      "sha256": "f8468beb32a32c95345069d473c499de91dacda42155ccff865c6076f5130bfb"
+      "sha256": "ecaeb0f983747dbdc2e3303c62f23a3a3d860e3e44b1d2ccb8c75bbd0b6d4112"
     },
     {
-      "bytes": 8790,
+      "bytes": 8659,
       "path": "src/ec/ref/lvlx/isog_chains.c",
       "selected_by": [
         "sqisign_ec_lvl3"
       ],
-      "sha256": "de959ab7a66bce04296bf8b482c05024e7ef01bdcb7dcd3724149cdc16696608"
+      "sha256": "8c6259d9510bf5d613e8346205facd82221905f85f2db17ccdc200e04d39c7b8"
     },
     {
-      "bytes": 2091,
+      "bytes": 2027,
       "path": "src/ec/ref/lvlx/xeval.c",
       "selected_by": [
         "sqisign_ec_lvl3"
       ],
-      "sha256": "647b26339802334d97be88fad45454d3671da250d4c12f5b9d8e1591ae43e5ee"
+      "sha256": "64432f634676140d80a95cf19d7e9b81d30646886dedd3e811f360a0f5ffe7c7"
     },
     {
-      "bytes": 1832,
+      "bytes": 1771,
       "path": "src/ec/ref/lvlx/xisog.c",
       "selected_by": [
         "sqisign_ec_lvl3"
       ],
-      "sha256": "eff2b5284753104e97ae6ef7e66b25d0a0abb9330d1d0f9f9e869eb07f44fa9b"
+      "sha256": "d89c1d15eb29d51da0108fcc956ddcebe98e0e1a90b0883d0243b4f419a4c77f"
     },
     {
-      "bytes": 30157,
-      "path": "src/gf/ref/lvl3/fp_p65376_32.c",
+      "bytes": 37050,
+      "path": "src/gf/ref/lvl3/fp_p27500_32.c",
       "selected_by": [
         "sqisign_gf_lvl3"
       ],
-      "sha256": "4c688ce995ac2ffa698227f108416773cd43983750ca88a50331398702b0139c"
+      "sha256": "08b22ea1241fd715c7f0840fd47d8a55353a8b875b452c26779947a7438b49bd"
     },
     {
-      "bytes": 403,
+      "bytes": 388,
       "path": "src/gf/ref/lvlx/fp.c",
       "selected_by": [
         "sqisign_gf_lvl3"
       ],
-      "sha256": "4e7ed01d34c540323fdb8bc70b30cd821f68e34cf13382a43755f875afc035e2"
+      "sha256": "fb50b5da0fe71caf8239c416f0512451dcb2a0ca6070ae9a9c6c2e0022c131d7"
     },
     {
-      "bytes": 7210,
+      "bytes": 6928,
       "path": "src/gf/ref/lvlx/fp2.c",
       "selected_by": [
         "sqisign_gf_lvl3"
       ],
-      "sha256": "80e4030a71ed2fb22e0b92e5eaef85f12f1c6f9c623b25069bc56a7a535e58ac"
+      "sha256": "f110ce65fed46ba8ecec25e1c3bebedf1aa3ad5fb2231e517436a02d8d6a38f8"
     },
     {
-      "bytes": 2877,
+      "bytes": 2784,
       "path": "src/hd/ref/lvlx/hd.c",
       "selected_by": [
         "sqisign_hd_lvl3"
       ],
-      "sha256": "eb6db22a2c91d8988c85818bd748dc75fa6b0fdbb81b16528dbbe80a94de7983"
+      "sha256": "b5ae772b2014b804f0d14bc973097928d99de1bc38e73c4bc8043fc839951e6b"
     },
     {
-      "bytes": 51570,
+      "bytes": 50272,
       "path": "src/hd/ref/lvlx/theta_isogenies.c",
       "selected_by": [
         "sqisign_hd_lvl3"
       ],
-      "sha256": "6e45d119391679878b86fbd50077c14530ced244b7a7dc8a685af2bbbf42f2f4"
+      "sha256": "47743a06b50db0c0a5946d2546a57f5dc56e7d6923cfd8bf01eaf4d6775bd615"
     },
     {
-      "bytes": 2012,
+      "bytes": 1934,
       "path": "src/hd/ref/lvlx/theta_structure.c",
       "selected_by": [
         "sqisign_hd_lvl3"
       ],
-      "sha256": "a25034352c1b975e0b29e8a3a96aaf6cfa58191b40ec0ca386063897ed7f87ae"
+      "sha256": "9f9f7cca6c88e14f29a5869bcaa431488f96320cdfaf9125fdecfa5569023335"
     },
     {
-      "bytes": 29238,
+      "bytes": 30825,
       "path": "src/id2iso/ref/lvlx/dim2id2iso.c",
       "selected_by": [
         "sqisign_id2iso_lvl3"
       ],
-      "sha256": "dac96deb7afb59e0e8ceaa274e69437eb46fdc72bf5696a94749bc57b77b02e2"
+      "sha256": "c98f3921545fd692d628bc50057fefe07f238ee39a778f24e7ea0a64461d9735"
     },
     {
-      "bytes": 12889,
+      "bytes": 12618,
       "path": "src/id2iso/ref/lvlx/id2iso.c",
       "selected_by": [
         "sqisign_id2iso_lvl3"
       ],
-      "sha256": "3bc570c395f9b1d02cc653afd7f70ed755ba61510c1163d263156c3be5e83341"
+      "sha256": "2e8571d04d0c717a59d9acb919d1bb61bf7e21f971482d809ade74ebcb666d8f"
     },
     {
-      "bytes": 9844,
+      "bytes": 9512,
       "path": "src/mp/ref/generic/mp.c",
       "selected_by": [
         "sqisign_mp_generic"
       ],
-      "sha256": "e9d8e17def33c72d26dbaab533158e33e8c2b7449d36b5b42fa51808b4df74d0"
+      "sha256": "034e0af2b40228926494b26b57deb93535165da8b3d95c5f2f452adb886ac776"
     },
     {
-      "bytes": 3107,
+      "bytes": 2641,
       "path": "src/precomp/ref/lvl3/e0_basis.c",
       "selected_by": [
         "sqisign_precomp_lvl3"
       ],
-      "sha256": "2af2b2f98f764c17df91b8735059945046ab90f1ce2185dcb498f6d3f143d847"
+      "sha256": "d613844407543e30c6e31c37dc75195ea0f14232617a426d5d40ddac73fa99ee"
     },
     {
-      "bytes": 104,
+      "bytes": 100,
       "path": "src/precomp/ref/lvl3/ec_params.c",
       "selected_by": [
         "sqisign_precomp_lvl3"
       ],
-      "sha256": "395c343696fa3d30526499dad2d7c9e25f4dc02daf34ebc1cc25792de2bede33"
+      "sha256": "990b2f5701e10a6ab81dcdb2de406f8d536366029b2ec259715e469b754d20b1"
     },
     {
-      "bytes": 13553,
+      "bytes": 12795,
       "path": "src/precomp/ref/lvl3/endomorphism_action.c",
       "selected_by": [
         "sqisign_precomp_lvl3"
       ],
-      "sha256": "db0c6e359fff3a8ef824021ac0a7f76ea7de8c8a263e4c42b00e6e3daa348c29"
+      "sha256": "105e4d760abea41ed305f0c41845ae57d5b5397c150f4d5a49d8c8bf0704e664"
     },
     {
-      "bytes": 8384,
+      "bytes": 7079,
       "path": "src/precomp/ref/lvl3/hd_splitting_transforms.c",
       "selected_by": [
         "sqisign_precomp_lvl3"
       ],
-      "sha256": "07e7069683f0a420257aa8494506b5c593f6875a4caf0588619308a5e08ea90e"
+      "sha256": "ea6e9d3368e0d55decbac0b6efb032607fc005d2ada914f9c489e2794c1dd660"
     },
     {
-      "bytes": 1999,
+      "bytes": 1224,
       "path": "src/precomp/ref/lvl3/quaternion_data.c",
       "selected_by": [
         "sqisign_precomp_lvl3"
       ],
-      "sha256": "203de9a1976f826b6e332134726900e34aac8cf4919cce99c4c0644f5ec89079"
+      "sha256": "635c9117e5bac012e52878250d4ea8d478072182f350c6f10c8cfc1d5b362b22"
     },
     {
-      "bytes": 409,
+      "bytes": 781,
       "path": "src/precomp/ref/lvl3/torsion_constants.c",
       "selected_by": [
         "sqisign_precomp_lvl3"
       ],
-      "sha256": "dcf89b4df91c5da9ad7f62e3a2f2f3f764ec259a4bb2a5b8e4c324ba2f3e3492"
+      "sha256": "e6f80fd5095d2222f9ed1cba4cbbc6206ce1f124485e807ce57867795ea9a403"
     },
     {
-      "bytes": 15376,
+      "bytes": 14160,
       "path": "src/quaternion/ref/generic/algebra.c",
       "selected_by": [
         "sqisign_quaternion_lvl3"
       ],
-      "sha256": "d0e702c64b2012089b182d1c51567356e53c4346c6d10ae8bfd104fbd9ba88f8"
+      "sha256": "35875bfc3370ac41f3d79d87e5006117d18758a3ddeebe078422a67b35cbaaa5"
     },
     {
-      "bytes": 5660,
+      "bytes": 5477,
       "path": "src/quaternion/ref/generic/dim2.c",
       "selected_by": [
         "sqisign_quaternion_lvl3"
       ],
-      "sha256": "6529d55842c4f3d001592e919d24d2884f31e07a8b26413cfed104d8d5ed3d80"
+      "sha256": "51dfd6aa4f0ea74dcf48d26dba193cb39b78a5a327487e2b38e4ae6fdd5e149c"
     },
     {
-      "bytes": 16122,
+      "bytes": 12041,
       "path": "src/quaternion/ref/generic/dim4.c",
       "selected_by": [
         "sqisign_quaternion_lvl3"
       ],
-      "sha256": "9f27644a3546e2d9a27de801a3f25695cf2d6eccd7cc3d7c95d828e2fd79fefd"
+      "sha256": "7565de5d8b144f3644716602bae63fc56f4dffad2066a69f32c54e8b42cc3f74"
     },
     {
-      "bytes": 2007,
+      "bytes": 1919,
       "path": "src/quaternion/ref/generic/dpe.c",
       "selected_by": [
         "sqisign_quaternion_lvl3"
       ],
-      "sha256": "657d95d78c0daf0c1cd240f34cc22f25e328b53bb280d7ed7a7f5710cb37f509"
+      "sha256": "c2027c3d0e51cbcaf03164695eb0c96d54a0ddcad691a9ef63977378cee9441f"
     },
     {
-      "bytes": 2337,
+      "bytes": 2215,
       "path": "src/quaternion/ref/generic/finit.c",
       "selected_by": [
         "sqisign_quaternion_lvl3"
       ],
-      "sha256": "bf4790b430585011c8a48ac7abaeea02830bc0ed5b7ea8890204ae6e3908f8f5"
+      "sha256": "d3cedf95288b870763c10d3d067ab072273ed1e68e97517fea9e9baa6c0684d3"
     },
     {
-      "bytes": 6642,
+      "bytes": 6441,
       "path": "src/quaternion/ref/generic/hnf/hnf.c",
       "selected_by": [
         "sqisign_quaternion_lvl3"
       ],
-      "sha256": "375b362ddfc9819f42f44715ca4fe71f339cc139d19b85b73af3fce8961cd260"
+      "sha256": "c696945620229e8372065e48ad800b636d9769ad51a7fd225e4cd8107cf45eaf"
     },
     {
-      "bytes": 5152,
+      "bytes": 4970,
       "path": "src/quaternion/ref/generic/hnf/hnf_internal.c",
       "selected_by": [
         "sqisign_quaternion_lvl3"
       ],
-      "sha256": "29ad8c3ce99f08d1447da5b8534920d503f02bb736337cc581688231e6bd1739"
+      "sha256": "737e512721fe7e312c8f4fabf5f306182695ef51a7f05b9f96184b313432baf3"
     },
     {
-      "bytes": 342,
+      "bytes": 328,
       "path": "src/quaternion/ref/generic/hnf/ibz_division.c",
       "selected_by": [
         "sqisign_quaternion_lvl3"
       ],
-      "sha256": "fd3011432e368df5d64e6ac327eaad0d288f2fec2903000add5d503387c9c4c4"
+      "sha256": "e16c00e0b6ec569dbeceb08c030d038eed56587d5bba540b617a9f16c20b820c"
     },
     {
-      "bytes": 19145,
+      "bytes": 19211,
       "path": "src/quaternion/ref/generic/ideal.c",
       "selected_by": [
         "sqisign_quaternion_lvl3"
       ],
-      "sha256": "a90ad438b3e403a23ed5ca60d18d885cb39e6c386759a89236b22d247b42818d"
+      "sha256": "803764ab265638362297923de7e71f35555fe07ad52473e579785bda5c1de59c"
     },
     {
-      "bytes": 91799,
+      "bytes": 91115,
       "path": "src/quaternion/ref/generic/intbig.c",
       "selected_by": [
         "sqisign_quaternion_lvl3"
       ],
-      "sha256": "e521d7b42ad8282f38310acfe9836ef872e598e0364f999a597555e115c5002a"
+      "sha256": "4c45c8dc964a9009ada304822f6d6344ff146d3644282fe20776ec2991834232"
     },
     {
-      "bytes": 8848,
+      "bytes": 8629,
       "path": "src/quaternion/ref/generic/integers.c",
       "selected_by": [
         "sqisign_quaternion_lvl3"
       ],
-      "sha256": "c7cc0613218f091a5d403fe9c3b07b6557c8b7606d955483d30527c3d354d516"
+      "sha256": "d71293cbcb35191f685a81aa24bef0905819dacc30b119570e59ff2385674f97"
     },
     {
-      "bytes": 21956,
+      "bytes": 25147,
       "path": "src/quaternion/ref/generic/lat_ball.c",
       "selected_by": [
         "sqisign_quaternion_lvl3"
       ],
-      "sha256": "d8af2e82a98f547b7be325d14132447169aab9dcec158e960d0ae0315bd269d4"
+      "sha256": "dad6ddff06b4586f3605317281bc3bab8cbe1aad9d597f798dd44d1d7b6805c8"
     },
     {
-      "bytes": 20773,
+      "bytes": 21276,
       "path": "src/quaternion/ref/generic/lattice.c",
       "selected_by": [
         "sqisign_quaternion_lvl3"
       ],
-      "sha256": "9b1c6b47e375088aa7d84a0d64f278c0b1e70924629b4e52247ba8765368d878"
+      "sha256": "872b4b95f70ce4bf988a3da6ef3aff70bf3076454601cbbe78d70e5e21f79ed1"
     },
     {
-      "bytes": 11263,
+      "bytes": 8220,
       "path": "src/quaternion/ref/generic/lll/l2.c",
       "selected_by": [
         "sqisign_quaternion_lvl3"
       ],
-      "sha256": "5bceafd871dd016dc9355c9ed0069c7e965295abc0941f35a31d0a835bffd6e6"
+      "sha256": "05a0bb27087903546a62af3aaa67c38a0a8b782c6a1a7f97d5f5f95dbcdfdb2c"
     },
     {
-      "bytes": 6348,
+      "bytes": 6815,
       "path": "src/quaternion/ref/generic/lll/lll_applications.c",
       "selected_by": [
         "sqisign_quaternion_lvl3"
       ],
-      "sha256": "e19072e10e5b6885154a22679fafda1dcb7b2595182a6b08644ff43707c646ef"
+      "sha256": "cc68970a0cbadd88f72c2a691ce9f601aee883bd9728e26e7ae8da7fa6d3f0d1"
     },
     {
-      "bytes": 30908,
+      "bytes": 29045,
       "path": "src/quaternion/ref/generic/lll/ml2.c",
       "selected_by": [
         "sqisign_quaternion_lvl3"
       ],
-      "sha256": "6df24fe127dea95cf6cb5bebf34ec2a3e6bf93acf762273e279da0af5c261484"
+      "sha256": "f86cc47efe011355f71a1ab51078a3e0f80e8e156a8cc9f2fdecfabe469ae545"
     },
     {
-      "bytes": 41920,
+      "bytes": 38536,
       "path": "src/quaternion/ref/generic/lll/mlll.c",
       "selected_by": [
         "sqisign_quaternion_lvl3"
       ],
-      "sha256": "25ff675fb1056f281fa17925d7783b63658ebbef515be6b39eb4c9a9ce341f92"
+      "sha256": "e7ac983c369104beed094ab3fd24690053f58e4aa7c6d5cf1c986245586c0828"
     },
     {
-      "bytes": 29017,
+      "bytes": 28371,
       "path": "src/quaternion/ref/generic/normeq.c",
       "selected_by": [
         "sqisign_quaternion_lvl3"
       ],
-      "sha256": "3e2bca4b19566b3c5713283b3cfab42d0e6e8fd965cb40e82ae9a6663aec765a"
+      "sha256": "0e3b2611f4926fc801c3d61f88dfa21fe5e6d0cafb4bf6a9a45d8369dbd98d33"
     },
     {
-      "bytes": 41862,
+      "bytes": 42858,
       "path": "src/quaternion/ref/generic/qlapoti.c",
       "selected_by": [
         "sqisign_quaternion_lvl3"
       ],
-      "sha256": "e1b2ad5d9197861535c090532631c2ac7e2a067d50556609070200ffcc9e02a3"
+      "sha256": "e659eca0462e1e1198a029a8dca9b923d110f09d5dbccd4afb785d7bf6a88e37"
     },
     {
-      "bytes": 4404,
+      "bytes": 4182,
       "path": "src/quaternion/ref/generic/rationals.c",
       "selected_by": [
         "sqisign_quaternion_lvl3"
       ],
-      "sha256": "8331b0378c4630a03fe54296a7141156bf8d915e3844f3eb0200b4f0733c866e"
+      "sha256": "3ab793253f2d9ad9373ef42bc3adcb1c7317d1a8a6e607a7c1d32ec92be652e7"
     },
     {
-      "bytes": 9190,
+      "bytes": 8957,
       "path": "src/signature/ref/lvlx/encode_signature.c",
       "selected_by": [
         "sqisign_signature_lvl3"
       ],
-      "sha256": "1306a810d47725eaba47844b1fe52b4900bea7cc217e2333a13f5367dd2c3396"
+      "sha256": "ea3190dcb448052ea2d8528175af5452cc5cf7bc19c8fa648a0b3fefbaef9614"
     },
     {
-      "bytes": 2971,
+      "bytes": 2902,
       "path": "src/signature/ref/lvlx/keygen.c",
       "selected_by": [
         "sqisign_signature_lvl3"
       ],
-      "sha256": "58b782c167ecb8d3e903d0da6d9f9a114d453f0ca98efc5a3b6ecb8770538d5c"
+      "sha256": "8a910c4301c6495cc69afb49e697b6bdbf9d386ea58ea33ec556ff400d6ce7db"
     },
     {
-      "bytes": 37307,
+      "bytes": 37733,
       "path": "src/signature/ref/lvlx/sign.c",
       "selected_by": [
         "sqisign_signature_lvl3"
       ],
-      "sha256": "c5dd5ccd9affa7051e61f1a672664030f624336120cbaceb47e28e3a49cbdafb"
+      "sha256": "b93a43fc08e00709419564648fcc32f95625357d3a93d25e100db99ae15865ec"
     },
     {
-      "bytes": 3071,
+      "bytes": 2939,
       "path": "src/sqisign.c",
       "selected_by": [
         "sqisign_lvl3"
       ],
-      "sha256": "9705ca72b1ecb18c6c5d0aec53698eadd237182537fbcd8f3b26e25ab717dcb4"
+      "sha256": "f69304330eb71971e264ca7e9b46f6b3cad26a06dcab6b1e97e6ccd8c3633c86"
     },
     {
-      "bytes": 3006,
+      "bytes": 2918,
       "path": "src/verification/ref/lvlx/common.c",
       "selected_by": [
         "sqisign_verification_lvl3"
       ],
-      "sha256": "4a88f5c3d5173bd234d41afe7c780ecf10abf304e63710d05cc688eeaec71ef1"
+      "sha256": "e411b9fba69eba64af56d816875d3cdfbfed2d37e8287034ac499d11e905750a"
     },
     {
-      "bytes": 5819,
+      "bytes": 6315,
       "path": "src/verification/ref/lvlx/encode_verification.c",
       "selected_by": [
         "sqisign_verification_lvl3"
       ],
-      "sha256": "92c28ffc5dc80a93d75bc2c35e0ba074de785ab140fd3f1b0fe20f3f86ce4018"
+      "sha256": "0da8bd7e3cfbd571723746994bba7e6c75711d429d2ffe79131e3663c28499c0"
     },
     {
-      "bytes": 13983,
+      "bytes": 13624,
       "path": "src/verification/ref/lvlx/verify.c",
       "selected_by": [
         "sqisign_verification_lvl3"
       ],
-      "sha256": "403d95797a2ca234c25865342377502efd0cb93848bf19b72819f4cedd99e7bb"
+      "sha256": "4250e28c34362a529c7358fb3602f8051da4cfbc0c81ea424e352a6c9cb43eda"
     }
   ]
 }

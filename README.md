@@ -12,6 +12,13 @@ and a bounded-memory Cortex-M4 integration. It avoids GMP and hosted heap servic
 the target backend. The STM32F407 linker profile uses the device's split SRAM
 banks so that the complete 192 KiB physical SRAM is available to the program.
 
+The three schemes use the compact Section 4 parameters and the Round-2
+protocol. Their public key, secret key and detached signature sizes are
+97/501/200, 129/711/284 and 177/953/386 bytes, respectively. See
+[PARAMETERS.md](PARAMETERS.md) for the encoded fields and export process.
+The bank layout, test commands and measured results are in
+[MEMORY.md](MEMORY.md) and [VALIDATION.md](VALIDATION.md).
+
 This is research software, not a production cryptographic library. Validate
 functional correctness, timing, stack headroom, and side-channel requirements
 for the exact toolchain and board configuration before deployment. The current
@@ -42,7 +49,7 @@ git clone --recursive https://github.com/mupq/pqm4.git /tmp/pqm4-sqisign
 git -C /tmp/pqm4-sqisign checkout cc2c1b992b602d285bd15991a566d5f17b34c1fa
 git -C /tmp/pqm4-sqisign submodule update --init --recursive
 
-git clone https://github.com/munsanwon2/SQIsign-M4.git
+git clone --branch new-parameter https://github.com/munsanwon2/SQIsign-M4.git
 cd SQIsign-M4
 ./scripts/install_all_into_pqm4.sh /tmp/pqm4-sqisign
 ```

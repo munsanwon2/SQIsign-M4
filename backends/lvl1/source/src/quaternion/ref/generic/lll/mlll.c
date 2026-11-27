@@ -20,6 +20,10 @@
 #include "lll_internals.h"
 #include "mlll_internals.h"
 
+#if defined(TARGET_ARM)
+#include <sqisign_m4_workspace.h>
+#endif
+
 #define N MLLL_MAX_GENERATORS
 
 static int
@@ -81,8 +85,8 @@ mlll_weight_bound(int bound, const quat_alg_t *alg)
  * source evaluation order.  In particular, p is charged only when one of the
  * coordinate-2/3 products is nonzero, avoiding rejection of large purely
  * unweighted coordinates. */
-static int
-mlll_quaternion_product_fits(const ibz_vec_4_t *left,
+int
+quat_alg_coord_mul_fits(const ibz_vec_4_t *left,
                              const ibz_vec_4_t *right,
                              const quat_alg_t *alg)
 {
@@ -122,43 +126,6 @@ mlll_quaternion_product_fits(const ibz_vec_4_t *left,
 
     return bound0 <= IBZ_BITS - 1 && bound1 <= IBZ_BITS - 1 &&
            bound2 <= IBZ_BITS - 1 && bound3 <= IBZ_BITS - 1;
-}
-
-static int
-mlll_lattice_mul_products_fit(const quat_lattice_t *lat1,
-                              const quat_lattice_t *lat2,
-                              const quat_alg_t *alg)
-{
-    if (lat1 == NULL || lat2 == NULL || alg == NULL ||
-        ibz_is_zero(&lat1->denom) || ibz_is_zero(&lat2->denom) ||
-        ibz_cmp(&alg->p, &ibz_const_zero) <= 0)
-        return 0;
-
-    if (ibz_bitsize(&lat1->denom) + ibz_bitsize(&lat2->denom) >
-        IBZ_BITS - 1)
-        return 0;
-
-    for (int left_column = 0; left_column < 4; left_column++) {
-        ibz_vec_4_t left;
-        ibz_vec_4_init(&left);
-        for (int row = 0; row < 4; row++)
-            ibz_copy(&left[row], &lat1->basis[row][left_column]);
-        for (int right_column = 0; right_column < 4; right_column++) {
-            ibz_vec_4_t right;
-            int fits;
-            ibz_vec_4_init(&right);
-            for (int row = 0; row < 4; row++)
-                ibz_copy(&right[row], &lat2->basis[row][right_column]);
-            fits = mlll_quaternion_product_fits(&left, &right, alg);
-            ibz_vec_4_finalize(&right);
-            if (!fits) {
-                ibz_vec_4_finalize(&left);
-                return 0;
-            }
-        }
-        ibz_vec_4_finalize(&left);
-    }
-    return 1;
 }
 
 static int
@@ -881,47 +848,6 @@ mlll_transpose_basis_in_place(ibz_mat_4x4_t *basis)
             ibz_swap(&(*basis)[row][column], &(*basis)[column][row]);
 }
 
-#if defined(TARGET_ARM) && (defined(__GNUC__) || defined(__clang__))
-#define MLLL_TRANSIENT_NOINLINE __attribute__((noinline))
-#else
-#define MLLL_TRANSIENT_NOINLINE
-#endif
-
-/* Keep quaternion-product temporaries out of the caller frame that remains
- * live across ML2.  quat_alg_coord_mul computes into a private sum before
- * publishing, so using `right` as both its second input and output is safe. */
-static MLLL_TRANSIENT_NOINLINE void
-mlll_form_ordered_products(ibz_vec_4_t generators[16],
-                           const quat_lattice_t *left_lattice,
-                           const quat_lattice_t *right_lattice,
-                           const quat_alg_t *alg)
-{
-    ibz_vec_4_t left, right;
-
-    ibz_vec_4_init(&left);
-    ibz_vec_4_init(&right);
-    for (int left_column = 0; left_column < 4; left_column++) {
-        ibz_vec_4_copy_ibz(&left,
-                           &left_lattice->basis[0][left_column],
-                           &left_lattice->basis[1][left_column],
-                           &left_lattice->basis[2][left_column],
-                           &left_lattice->basis[3][left_column]);
-        for (int right_column = 0; right_column < 4; right_column++) {
-            ibz_vec_4_copy_ibz(&right,
-                               &right_lattice->basis[0][right_column],
-                               &right_lattice->basis[1][right_column],
-                               &right_lattice->basis[2][right_column],
-                               &right_lattice->basis[3][right_column]);
-            quat_alg_coord_mul(&right, &left, &right, alg);
-            for (int coordinate = 0; coordinate < 4; coordinate++)
-                ibz_copy(&generators[4 * left_column + right_column][coordinate],
-                         &right[coordinate]);
-        }
-    }
-    ibz_vec_4_finalize(&right);
-    ibz_vec_4_finalize(&left);
-}
-
 /* Active compact MLLL entry point.  ML2 publishes its output only after the
  * reduction finishes.  A failed attempt is retried using span-preserving
  * permutations; no surrounding protocol state is regenerated. */
@@ -977,48 +903,35 @@ quat_lattice_mul_mlll(quat_lattice_t *res,
                       const quat_lattice_t *lat2,
                       const quat_alg_t *alg)
 {
-    ibz_vec_4_t generators[16];
-    quat_lattice_t lat1_red, lat2_red;
-    int ok = 0;
-
     if (res == NULL || lat1 == NULL || lat2 == NULL || alg == NULL ||
         ibz_is_zero(&lat1->denom) || ibz_is_zero(&lat2->denom) ||
         ibz_cmp(&alg->p, &ibz_const_zero) <= 0)
         return 0;
 
-    quat_lattice_init(&lat1_red);
-    quat_lattice_init(&lat2_red);
-    for (int i = 0; i < 16; i++)
-        ibz_vec_4_init(&generators[i]);
+    quat_lattice_t candidate;
+    ibz_mat_4x4_t right;
+    int ok = 0;
+    quat_lattice_init(&candidate);
+    ibz_mat_4x4_init(&right);
 
-    /* Algorithm 2, Lines 3-4: shorten both input bases before forming the
-     * sixteen ordered products. */
-    if (!quat_lattice_lll(&lat1_red.basis, lat1, alg) ||
-        !quat_lattice_lll(&lat2_red.basis, lat2, alg))
+    /* Reduce both inputs before constructing the ordered products. ML2
+     * materializes each generator directly in its own state, including on
+     * permutation retries, then publishes into the private left basis. */
+    if (!ibz_mul_checked(&candidate.denom, &lat1->denom, &lat2->denom) ||
+        !quat_lattice_lll(&candidate.basis, lat1, alg) ||
+        !quat_lattice_lll(&right, lat2, alg) ||
+        quat_ml2_retry_products(&candidate.basis, &candidate.basis, &right, alg) != 4)
         goto cleanup;
-    ibz_copy(&lat1_red.denom, &lat1->denom);
-    ibz_copy(&lat2_red.denom, &lat2->denom);
-    if (!mlll_lattice_mul_products_fit(&lat1_red, &lat2_red, alg))
+    mlll_transpose_basis_in_place(&candidate.basis);
+    if (!quat_lattice_reduce_denom(&candidate, &candidate))
         goto cleanup;
-
-    mlll_form_ordered_products(generators, &lat1_red, &lat2_red, alg);
-
-    /* The shortened left basis is dead after product formation.  Reuse its
-     * private storage for the unpublished ML2 candidate. */
-    if (!mlll_full_rank_basis(&lat1_red.basis, generators, 16, alg))
-        goto cleanup;
-    ibz_mul(&lat1_red.denom, &lat1_red.denom, &lat2_red.denom);
-    if (!quat_lattice_reduce_denom(&lat1_red, &lat1_red))
-        goto cleanup;
-    ibz_mat_4x4_copy(&res->basis, &lat1_red.basis);
-    ibz_copy(&res->denom, &lat1_red.denom);
+    ibz_mat_4x4_copy(&res->basis, &candidate.basis);
+    ibz_copy(&res->denom, &candidate.denom);
     ok = 1;
 
 cleanup:
-    quat_lattice_finalize(&lat2_red);
-    quat_lattice_finalize(&lat1_red);
-    for (int i = 0; i < 16; i++)
-        ibz_vec_4_finalize(&generators[i]);
+    ibz_mat_4x4_finalize(&right);
+    quat_lattice_finalize(&candidate);
     return ok;
 }
 
@@ -1037,8 +950,6 @@ quat_lattice_intersect_mlll(quat_lattice_t *res,
      * With a = nrd(I1)/d and b = nrd(I2)/d, Lemma 14 gives
      * I1 intersect I2 = b*I1 + a*I2. ML2 reduces those eight generators
      * directly, avoiding both lattice duals and HNF. */
-    quat_lattice_t lat1_red, lat2_red;
-    ibz_vec_4_t generators[8];
     ibz_vec_4_t left, right;
     ibz_t denominator1, denominator2, denominator_product;
     ibz_t denominator_gcd, common_denominator, scale1, scale2;
@@ -1054,8 +965,32 @@ quat_lattice_intersect_mlll(quat_lattice_t *res,
         ibz_cmp(&alg->p, &ibz_const_zero) <= 0)
         return 0;
 
-    quat_lattice_init(&lat1_red);
-    quat_lattice_init(&lat2_red);
+    /* The left reduced basis is also the unpublished output. Its lifetime
+     * spans both input reductions and the eight-generator ML2 call. */
+    typedef struct {
+        ibz_vec_4_t generators[8];
+        quat_lattice_t left_reduced;
+    } intersection_scratch_t;
+#if defined(TARGET_ARM)
+    intersection_scratch_t *scratch = sqisign_m4_workspace_acquire(sizeof(*scratch));
+    if (scratch == NULL)
+        return 0;
+    quat_lattice_t *lat2_red = sqisign_m4_workspace_acquire(sizeof(*lat2_red));
+    if (lat2_red == NULL) {
+        sqisign_m4_workspace_release(scratch);
+        return 0;
+    }
+#else
+    intersection_scratch_t automatic_scratch;
+    intersection_scratch_t *scratch = &automatic_scratch;
+    quat_lattice_t automatic_right;
+    quat_lattice_t *lat2_red = &automatic_right;
+#endif
+    ibz_vec_4_t *const generators = scratch->generators;
+    quat_lattice_t *const lat1_red = &scratch->left_reduced;
+
+    quat_lattice_init(lat1_red);
+    quat_lattice_init(lat2_red);
     for (int i = 0; i < 8; i++)
         ibz_vec_4_init(&generators[i]);
     ibz_vec_4_init(&left);
@@ -1075,15 +1010,15 @@ quat_lattice_intersect_mlll(quat_lattice_t *res,
     ibz_init(&quotient_scratch);
 
     /* Algorithm 3, Lines 1-2. */
-    if (!quat_lattice_lll(&(lat1_red.basis), lat1, alg))
+    if (!quat_lattice_lll(&lat1_red->basis, lat1, alg))
         goto cleanup;
-    if (!quat_lattice_lll(&(lat2_red.basis), lat2, alg))
+    if (!quat_lattice_lll(&lat2_red->basis, lat2, alg))
         goto cleanup;
-    ibz_copy(&(lat1_red.denom), &(lat1->denom));
-    ibz_copy(&(lat2_red.denom), &(lat2->denom));
+    ibz_copy(&lat1_red->denom, &lat1->denom);
+    ibz_copy(&lat2_red->denom, &lat2->denom);
 
-    ibz_abs(&denominator1, &lat1_red.denom);
-    ibz_abs(&denominator2, &lat2_red.denom);
+    ibz_abs(&denominator1, &lat1_red->denom);
+    ibz_abs(&denominator2, &lat2_red->denom);
     if (ibz_bitsize(&denominator1) + ibz_bitsize(&denominator2) >
         IBZ_BITS - 1)
         goto cleanup;
@@ -1093,10 +1028,10 @@ quat_lattice_intersect_mlll(quat_lattice_t *res,
     ibz_gcd(&trace_gcd, norm1, norm2);
     for (int r = 0; r < 4; r++) {
         for (int coordinate = 0; coordinate < 4; coordinate++)
-            ibz_copy(&left[coordinate], &lat1_red.basis[coordinate][r]);
+            ibz_copy(&left[coordinate], &lat1_red->basis[coordinate][r]);
         for (int s = 0; s < 4; s++) {
             for (int coordinate = 0; coordinate < 4; coordinate++)
-                ibz_copy(&right[coordinate], &lat2_red.basis[coordinate][s]);
+                ibz_copy(&right[coordinate], &lat2_red->basis[coordinate][s]);
             if (!mlll_reduced_trace_pairing(
                     &trace, &left, &right, &denominator_product, alg))
                 goto cleanup;
@@ -1125,27 +1060,32 @@ quat_lattice_intersect_mlll(quat_lattice_t *res,
     for (int column = 0; column < 4; column++) {
         for (int row = 0; row < 4; row++) {
             if (!mlll_scaled_coordinate_fits(
-                    &lat1_red.basis[row][column], &scale1, &b) ||
+                    &lat1_red->basis[row][column], &scale1, &b) ||
                 !mlll_scaled_coordinate_fits(
-                    &lat2_red.basis[row][column], &scale2, &a))
+                    &lat2_red->basis[row][column], &scale2, &a))
                 goto cleanup;
-            ibz_mul(&quotient_scratch, &lat1_red.basis[row][column], &scale1);
+            ibz_mul(&quotient_scratch, &lat1_red->basis[row][column], &scale1);
             ibz_mul(&generators[column][row], &quotient_scratch, &b);
-            ibz_mul(&quotient_scratch, &lat2_red.basis[row][column], &scale2);
+            ibz_mul(&quotient_scratch, &lat2_red->basis[row][column], &scale2);
             ibz_mul(&generators[4 + column][row], &quotient_scratch, &a);
         }
     }
-    /* Both scaled generator sets are complete, so the old left basis is no
-     * longer live and can hold the unpublished intersection candidate. */
-    if (!mlll_full_rank_basis(&lat1_red.basis, generators, 8, alg))
+    /* The right basis is dead once the scaled generators are complete.
+     * Release it before ML2, and reuse the left basis for the result. */
+    quat_lattice_finalize(lat2_red);
+#if defined(TARGET_ARM)
+    sqisign_m4_workspace_release(lat2_red);
+#endif
+    lat2_red = NULL;
+    if (!mlll_full_rank_basis(&lat1_red->basis, generators, 8, alg))
         goto cleanup;
-    ibz_copy(&lat1_red.denom, &common_denominator);
-    if (!quat_lattice_reduce_denom(&lat1_red, &lat1_red))
+    ibz_copy(&lat1_red->denom, &common_denominator);
+    if (!quat_lattice_reduce_denom(lat1_red, lat1_red))
         goto cleanup;
 
     /* Publish only after every exact division and reduction succeeded. */
-    ibz_mat_4x4_copy(&res->basis, &lat1_red.basis);
-    ibz_copy(&res->denom, &lat1_red.denom);
+    ibz_mat_4x4_copy(&res->basis, &lat1_red->basis);
+    ibz_copy(&res->denom, &lat1_red->denom);
     ibz_copy(intersection_norm, &candidate_norm);
     ok = 1;
 
@@ -1167,8 +1107,16 @@ cleanup:
     ibz_vec_4_finalize(&left);
     for (int i = 0; i < 8; i++)
         ibz_vec_4_finalize(&generators[i]);
-    quat_lattice_finalize(&lat1_red);
-    quat_lattice_finalize(&lat2_red);
+    quat_lattice_finalize(lat1_red);
+    if (lat2_red != NULL) {
+        quat_lattice_finalize(lat2_red);
+#if defined(TARGET_ARM)
+        sqisign_m4_workspace_release(lat2_red);
+#endif
+    }
+#if defined(TARGET_ARM)
+    sqisign_m4_workspace_release(scratch);
+#endif
     return ok;
 }
 

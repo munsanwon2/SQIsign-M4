@@ -377,7 +377,8 @@ fp2_dlog_2e_rec(digit_t *a, long len, fp2_t *pows_f, fp2_t *pows_g, long stackle
 static bool
 fp2_dlog_2e(digit_t *scal, const fp2_t *f, const fp2_t *g_inverse, int e)
 {
-    enum { FP2_DLOG_MAX_E = 512, FP2_DLOG_MAX_DEPTH = 10 };
+    enum { FP2_DLOG_MAX_E = TORSION_EVEN_POWER, FP2_DLOG_MAX_DEPTH = 10 };
+    _Static_assert(FP2_DLOG_MAX_E < (1u << FP2_DLOG_MAX_DEPTH), "pairing DLP stack is too short");
     if (scal == NULL || f == NULL || g_inverse == NULL ||
         e <= 0 || e > FP2_DLOG_MAX_E)
         return false;

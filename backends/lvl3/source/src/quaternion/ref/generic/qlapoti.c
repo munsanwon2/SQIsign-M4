@@ -1,6 +1,9 @@
 #include <quaternion.h>
 #include "internal.h"
 #include <stdint.h>
+#ifdef TARGET_ARM
+#include <sqisign_m4_workspace.h>
+#endif
 // get shortest equivalent ideal
 
 #define DEBUG_PRINTS 0
@@ -74,23 +77,33 @@ quat_lideal_shortest_generator(quat_alg_elem_t *new_alpha,
                                const quat_left_ideal_t *lideal,
                                const quat_alg_t *alg)
 {
-    ibz_mat_4x4_t gram, red;
+    typedef struct {
+        ibz_mat_4x4_t gram, reduced;
+    } shortest_generator_matrices_t;
+#ifdef TARGET_ARM
+    shortest_generator_matrices_t *matrices = sqisign_m4_workspace_acquire(sizeof(*matrices));
+    if (matrices == NULL)
+        return 0;
+#else
+    shortest_generator_matrices_t automatic_matrices;
+    shortest_generator_matrices_t *matrices = &automatic_matrices;
+#endif
     ibz_t n, remainder;
     int status = 0;
 
-    ibz_mat_4x4_init(&gram);
-    ibz_mat_4x4_init(&red);
+    ibz_mat_4x4_init(&matrices->gram);
+    ibz_mat_4x4_init(&matrices->reduced);
     ibz_init(&n);
     ibz_init(&remainder);
 
-    if (!quat_lideal_reduce_basis(&red, &gram, lideal, alg))
+    if (!quat_lideal_reduce_basis(&matrices->reduced, &matrices->gram, lideal, alg))
         goto cleanup;
 
     ibz_set(&new_alpha->coord[0], 1);
     ibz_set(&new_alpha->coord[1], 0);
     ibz_set(&new_alpha->coord[2], 0);
     ibz_set(&new_alpha->coord[3], 0);
-    ibz_mat_4x4_eval(&new_alpha->coord, &red, &new_alpha->coord);
+    ibz_mat_4x4_eval(&new_alpha->coord, &matrices->reduced, &new_alpha->coord);
     ibz_copy(&new_alpha->denom, &lideal->lattice.denom);
     if (!quat_lattice_contains(NULL, &lideal->lattice, new_alpha) ||
         !quat_alg_norm(&n, &remainder, new_alpha, alg) ||
@@ -105,8 +118,11 @@ quat_lideal_shortest_generator(quat_alg_elem_t *new_alpha,
 cleanup:
     ibz_finalize(&remainder);
     ibz_finalize(&n);
-    ibz_mat_4x4_finalize(&gram);
-    ibz_mat_4x4_finalize(&red);
+    ibz_mat_4x4_finalize(&matrices->gram);
+    ibz_mat_4x4_finalize(&matrices->reduced);
+#ifdef TARGET_ARM
+    sqisign_m4_workspace_release(matrices);
+#endif
     return status;
 }
 
@@ -755,7 +771,12 @@ quat_qlapoti_red_eval_from_inverse(ibz_vec_2_t *res,
     ibz_vec_2_finalize(&product);
 }
 
-// document all functions
+/* These candidates remain live during the lattice-membership and CVP calls.
+ * The search ends before the isogeny's theta workspace is acquired. */
+typedef struct {
+    quat_alg_elem_t alpha, alpha_0, encoding, gamma1, gamma2;
+} qlapoti_search_candidates_t;
+
 static QLAPOTI_NOINLINE int
 quat_qlapoti_search(quat_alg_elem_t *mu1,
                     quat_alg_elem_t *mu2,
@@ -771,15 +792,26 @@ quat_qlapoti_search(quat_alg_elem_t *mu1,
     int transformed = 0;
     int keep_alpha = 0;
     int result = QUAT_QLAPOTI_RETRY;
-    quat_alg_elem_t alpha, encoding, alpha_0;
     ibz_mat_2x2_t L_inv;
     ibz_vec_2_t v_target, v_close;
     ibz_t n, m, a_alpha, b_alpha, alpha0norm, psqrt;
     ibz_t tmp, lam, two_e;
     qlapoti_enumeration_parameters_t params;
-    quat_alg_elem_t gamma1, gamma2;
-    quat_alg_elem_init(&gamma1);
-    quat_alg_elem_init(&gamma2);
+#ifdef TARGET_ARM
+    qlapoti_search_candidates_t *candidates = sqisign_m4_workspace_acquire(sizeof(*candidates));
+    if (candidates == NULL)
+        return QUAT_QLAPOTI_FATAL;
+#else
+    qlapoti_search_candidates_t automatic_candidates;
+    qlapoti_search_candidates_t *candidates = &automatic_candidates;
+#endif
+    quat_alg_elem_t *const alpha = &candidates->alpha;
+    quat_alg_elem_t *const alpha_0 = &candidates->alpha_0;
+    quat_alg_elem_t *const encoding = &candidates->encoding;
+    quat_alg_elem_t *const gamma1 = &candidates->gamma1;
+    quat_alg_elem_t *const gamma2 = &candidates->gamma2;
+    quat_alg_elem_init(gamma1);
+    quat_alg_elem_init(gamma2);
     ibz_vec_2_init(&v_target);
     ibz_vec_2_init(&v_close);
     ibz_mat_2x2_init(&L_inv);
@@ -792,9 +824,9 @@ quat_qlapoti_search(quat_alg_elem_t *mu1,
     ibz_init(&b_alpha);
     ibz_init(&alpha0norm);
     ibz_init(&psqrt);
-    quat_alg_elem_init(&alpha);
-    quat_alg_elem_init(&alpha_0);
-    quat_alg_elem_init(&encoding);
+    quat_alg_elem_init(alpha);
+    quat_alg_elem_init(alpha_0);
+    quat_alg_elem_init(encoding);
     ibz_sqrt_floor(&psqrt, &alg->p);
     params.cornacchia_params = cornacchia_params;
     ibz_copy(&n, &small->norm);
@@ -824,7 +856,7 @@ quat_qlapoti_search(quat_alg_elem_t *mu1,
             if (!keep_alpha) {
                 // num_alphas_tried++;
                 int generator_status = quat_lideal_generator_small_coprime(
-                    &alpha_0,
+                    alpha_0,
                     small,
                     alg,
                     gen_sampling_bound_bits,
@@ -837,8 +869,8 @@ quat_qlapoti_search(quat_alg_elem_t *mu1,
                     keep_alpha = 0;
                     continue;
                 }
-                quat_alg_elem_copy(&alpha, &alpha_0);
-                if (!quat_alg_norm(&alpha0norm, &b_alpha, &alpha_0, alg) ||
+                quat_alg_elem_copy(alpha, alpha_0);
+                if (!quat_alg_norm(&alpha0norm, &b_alpha, alpha_0, alg) ||
                     !ibz_is_one(&b_alpha)) {
                     result = QUAT_QLAPOTI_FATAL;
                     goto cleanup;
@@ -853,9 +885,9 @@ quat_qlapoti_search(quat_alg_elem_t *mu1,
                      * numerators and defer normalization until CVP succeeds;
                      * generic rational addition/normalization here dominated
                      * every lambda retry while producing the same element. */
-                    ibz_vec_4_add(&alpha.coord,
-                                  &alpha.coord,
-                                  &alpha_0.coord);
+                    ibz_vec_4_add(&alpha->coord,
+                                  &alpha->coord,
+                                  &alpha_0->coord);
                     ibz_gcd(&b_alpha, &small->norm, &lam);
                     lambda_attempts++;
                 } while (!ibz_is_one(&b_alpha) &&
@@ -866,7 +898,7 @@ quat_qlapoti_search(quat_alg_elem_t *mu1,
                     continue;
                 }
             }
-            if (!quat_lattice_contains(NULL, &small->lattice, &alpha)) {
+            if (!quat_lattice_contains(NULL, &small->lattice, alpha)) {
                 result = QUAT_QLAPOTI_FATAL;
                 goto cleanup;
             }
@@ -892,13 +924,13 @@ quat_qlapoti_search(quat_alg_elem_t *mu1,
         }
         // set a_alpha, b_alpha (to double of what they are in sage)
         {
-            ibz_copy(&a_alpha, &(alpha.coord[0]));
-            ibz_copy(&b_alpha, &(alpha.coord[1]));
-            if (ibz_is_one(&alpha.denom)) {
+            ibz_copy(&a_alpha, &(alpha->coord[0]));
+            ibz_copy(&b_alpha, &(alpha->coord[1]));
+            if (ibz_is_one(&alpha->denom)) {
                 ibz_add(&a_alpha, &a_alpha, &a_alpha);
                 ibz_add(&b_alpha, &b_alpha, &b_alpha);
             }
-            else if (ibz_cmp(&alpha.denom, &ibz_const_two) != 0) {
+            else if (ibz_cmp(&alpha->denom, &ibz_const_two) != 0) {
                 result = QUAT_QLAPOTI_FATAL;
                 goto cleanup;
             }
@@ -962,7 +994,7 @@ quat_qlapoti_search(quat_alg_elem_t *mu1,
         params.m = &m;
         params.n = &n;
         int cvp_status =
-            quat_dim2_lattice_qlapoti_cvp_condition(&encoding, &v_target, &params);
+            quat_dim2_lattice_qlapoti_cvp_condition(encoding, &v_target, &params);
         if (cvp_status == QUAT_QLAPOTI_FATAL) {
             result = QUAT_QLAPOTI_FATAL;
             goto cleanup;
@@ -975,24 +1007,24 @@ quat_qlapoti_search(quat_alg_elem_t *mu1,
             /* Restore the canonical representation once on the successful
              * path.  This preserves the former downstream gamma encodings
              * while avoiding normalization on every rejected attempt. */
-            quat_alg_normalize(&alpha);
+            quat_alg_normalize(alpha);
             // extract ideals from encoding of output
-            ibz_mul(&(gamma1.coord[0]), &(encoding.coord[0]), &n);
-            ibz_mul(&(gamma2.coord[0]), &(encoding.coord[1]), &n);
-            ibz_mul(&(gamma1.coord[1]), &(encoding.coord[2]), &n);
-            ibz_mul(&(gamma2.coord[1]), &(encoding.coord[3]), &n);
-            quat_alg_add(&gamma1, &gamma1, &alpha);
-            quat_alg_add(&gamma2, &gamma2, &alpha);
+            ibz_mul(&(gamma1->coord[0]), &(encoding->coord[0]), &n);
+            ibz_mul(&(gamma2->coord[0]), &(encoding->coord[1]), &n);
+            ibz_mul(&(gamma1->coord[1]), &(encoding->coord[2]), &n);
+            ibz_mul(&(gamma2->coord[1]), &(encoding->coord[3]), &n);
+            quat_alg_add(gamma1, gamma1, alpha);
+            quat_alg_add(gamma2, gamma2, alpha);
 #ifndef NDEBUG
             ibz_t n1, n2, d;
             ibz_init(&n1);
             ibz_init(&n2);
             ibz_init(&d);
-            assert(quat_lattice_contains(NULL, &small->lattice, &gamma1));
-            assert(quat_lattice_contains(NULL, &small->lattice, &gamma2));
-            assert(quat_alg_norm(&n1, &d, &gamma1, alg));
+            assert(quat_lattice_contains(NULL, &small->lattice, gamma1));
+            assert(quat_lattice_contains(NULL, &small->lattice, gamma2));
+            assert(quat_alg_norm(&n1, &d, gamma1, alg));
             assert(ibz_is_one(&d));
-            assert(quat_alg_norm(&n2, &d, &gamma2, alg));
+            assert(quat_alg_norm(&n2, &d, gamma2, alg));
             assert(ibz_is_one(&d));
             ibz_div(&n1, &d, &n1, &small->norm);
             assert(ibz_is_zero(&d));
@@ -1009,18 +1041,18 @@ quat_qlapoti_search(quat_alg_elem_t *mu1,
              * CVP succeeds; reuse it as conjugate scratch instead of keeping
              * an additional search element live.  Every rejection below resets
              * keep_alpha, so the next iteration resamples alpha_0. */
-            quat_alg_conj(&alpha_0, &gamma1);
-            ibz_mul(&alpha_0.denom, &alpha_0.denom, &n);
-            quat_alg_mul(&encoding, &gamma2, &alpha_0, alg);
+            quat_alg_conj(alpha_0, gamma1);
+            ibz_mul(&alpha_0->denom, &alpha_0->denom, &n);
+            quat_alg_mul(encoding, gamma2, alpha_0, alg);
 #ifndef NDEBUG
             quat_left_ideal_t I1, I2;
             quat_left_ideal_init(&I1);
             quat_left_ideal_init(&I2);
-            int ideals_ok = quat_lideal_mul(&I1, small, &alpha_0, alg);
-            quat_alg_elem_copy(&alpha_0, &gamma2);
-            ibz_neg(&(alpha_0.coord[0]), &(alpha_0.coord[0]));
-            ibz_mul(&alpha_0.denom, &alpha_0.denom, &n);
-            ideals_ok = ideals_ok && quat_lideal_mul(&I2, small, &alpha_0, alg);
+            int ideals_ok = quat_lideal_mul(&I1, small, alpha_0, alg);
+            quat_alg_elem_copy(alpha_0, gamma2);
+            ibz_neg(&(alpha_0->coord[0]), &(alpha_0->coord[0]));
+            ibz_mul(&alpha_0->denom, &alpha_0->denom, &n);
+            ideals_ok = ideals_ok && quat_lideal_mul(&I2, small, alpha_0, alg);
             if (ideals_ok) {
                 ibz_add(&tmp, &I1.norm, &I2.norm);
                 assert(ibz_cmp(&tmp, &two_e) == 0);
@@ -1031,53 +1063,53 @@ quat_qlapoti_search(quat_alg_elem_t *mu1,
 #endif
 
             // enforces suitable output
-            quat_alg_normalize(&encoding);
-            if (ibz_is_one(&encoding.denom)) {
-                int endtype = get_endtype(&encoding);
+            quat_alg_normalize(encoding);
+            if (ibz_is_one(&encoding->denom)) {
+                int endtype = get_endtype(encoding);
                 if (endtype == 1) {
-                    quat_alg_add(&alpha_0, &gamma1, &gamma2);
-                    ibz_add(&alpha_0.denom, &alpha_0.denom, &alpha_0.denom);
-                    quat_alg_sub(&gamma1, &gamma1, &gamma2);
-                    ibz_add(&gamma1.denom, &gamma1.denom, &gamma1.denom);
-                    quat_alg_elem_copy(&gamma2, &alpha_0);
+                    quat_alg_add(alpha_0, gamma1, gamma2);
+                    ibz_add(&alpha_0->denom, &alpha_0->denom, &alpha_0->denom);
+                    quat_alg_sub(gamma1, gamma1, gamma2);
+                    ibz_add(&gamma1->denom, &gamma1->denom, &gamma1->denom);
+                    quat_alg_elem_copy(gamma2, alpha_0);
                 } else if (endtype == 2) {
-                    quat_alg_elem_set(&alpha_0, 1, 0, 1, 0, 0);
-                    quat_alg_mul(&gamma2, &alpha_0, &gamma2, alg);
-                    quat_alg_add(&alpha_0, &gamma1, &gamma2);
-                    ibz_add(&alpha_0.denom, &alpha_0.denom, &alpha_0.denom);
-                    quat_alg_sub(&gamma1, &gamma1, &gamma2);
-                    ibz_add(&gamma1.denom, &gamma1.denom, &gamma1.denom);
-                    quat_alg_elem_copy(&gamma2, &alpha_0);
+                    quat_alg_elem_set(alpha_0, 1, 0, 1, 0, 0);
+                    quat_alg_mul(gamma2, alpha_0, gamma2, alg);
+                    quat_alg_add(alpha_0, gamma1, gamma2);
+                    ibz_add(&alpha_0->denom, &alpha_0->denom, &alpha_0->denom);
+                    quat_alg_sub(gamma1, gamma1, gamma2);
+                    ibz_add(&gamma1->denom, &gamma1->denom, &gamma1->denom);
+                    quat_alg_elem_copy(gamma2, alpha_0);
                 } else {
                     keep_alpha = 0;
                     ibz_set(&lam, 1);
-                    ibz_vec_4_set(&gamma1.coord, 0, 0, 0, 0);
-                    ibz_vec_4_set(&gamma2.coord, 0, 0, 0, 0);
-                    ibz_set(&gamma1.denom, 1);
-                    ibz_set(&gamma2.denom, 1);
+                    ibz_vec_4_set(&gamma1->coord, 0, 0, 0, 0);
+                    ibz_vec_4_set(&gamma2->coord, 0, 0, 0, 0);
+                    ibz_set(&gamma1->denom, 1);
+                    ibz_set(&gamma2->denom, 1);
                     found = 0;
                     transformed = 0;
                     continue;
                 }
 
-                if (!quat_lattice_contains(NULL, &small->lattice, &gamma1) ||
-                    !quat_lattice_contains(NULL, &small->lattice, &gamma2)) {
+                if (!quat_lattice_contains(NULL, &small->lattice, gamma1) ||
+                    !quat_lattice_contains(NULL, &small->lattice, gamma2)) {
                     result = QUAT_QLAPOTI_FATAL;
                     goto cleanup;
                 }
-                quat_alg_conj(&alpha_0, &gamma1);
-                ibz_mul(&alpha_0.denom, &alpha_0.denom, &n);
-                quat_alg_mul(&encoding, &gamma2, &alpha_0, alg);
-                quat_alg_normalize(&encoding);
+                quat_alg_conj(alpha_0, gamma1);
+                ibz_mul(&alpha_0->denom, &alpha_0->denom, &n);
+                quat_alg_mul(encoding, gamma2, alpha_0, alg);
+                quat_alg_normalize(encoding);
                 transformed = 1;
             } else {
-                if (!quat_elem_is_odd_norm(&encoding)) {
+                if (!quat_elem_is_odd_norm(encoding)) {
                     keep_alpha = 0;
                     ibz_set(&lam, 1);
-                    ibz_vec_4_set(&gamma1.coord, 0, 0, 0, 0);
-                    ibz_vec_4_set(&gamma2.coord, 0, 0, 0, 0);
-                    ibz_set(&gamma1.denom, 1);
-                    ibz_set(&gamma2.denom, 1);
+                    ibz_vec_4_set(&gamma1->coord, 0, 0, 0, 0);
+                    ibz_vec_4_set(&gamma2->coord, 0, 0, 0, 0);
+                    ibz_set(&gamma1->denom, 1);
+                    ibz_set(&gamma2->denom, 1);
                     found = 0;
                     transformed = 0;
                     continue;
@@ -1090,16 +1122,16 @@ quat_qlapoti_search(quat_alg_elem_t *mu1,
     }
 
     if (found > 0) {
-        quat_alg_elem_copy(mu1, &gamma1);
-        quat_alg_elem_copy(mu2, &gamma2);
-        quat_alg_elem_copy(theta, &encoding);
+        quat_alg_elem_copy(mu1, gamma1);
+        quat_alg_elem_copy(mu2, gamma2);
+        quat_alg_elem_copy(theta, encoding);
         result = transformed ? QUAT_QLAPOTI_SUCCESS_TRANSFORMED
                              : QUAT_QLAPOTI_SUCCESS;
     }
 
 cleanup:
-    quat_alg_elem_finalize(&gamma1);
-    quat_alg_elem_finalize(&gamma2);
+    quat_alg_elem_finalize(gamma1);
+    quat_alg_elem_finalize(gamma2);
     ibz_finalize(&n);
     ibz_finalize(&m);
     ibz_finalize(&tmp);
@@ -1109,13 +1141,16 @@ cleanup:
     ibz_finalize(&b_alpha);
     ibz_finalize(&alpha0norm);
     ibz_finalize(&psqrt);
-    quat_alg_elem_finalize(&alpha);
-    quat_alg_elem_finalize(&alpha_0);
-    quat_alg_elem_finalize(&encoding);
+    quat_alg_elem_finalize(alpha);
+    quat_alg_elem_finalize(alpha_0);
+    quat_alg_elem_finalize(encoding);
     ibz_vec_2_finalize(&v_target);
     ibz_vec_2_finalize(&v_close);
     ibz_mat_2x2_finalize(&L_inv);
 
+#ifdef TARGET_ARM
+    sqisign_m4_workspace_release(candidates);
+#endif
     return result;
 }
 

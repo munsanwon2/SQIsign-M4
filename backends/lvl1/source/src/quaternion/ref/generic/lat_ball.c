@@ -4,57 +4,16 @@
 #include "lll_internals.h"
 #include "dpe.h"
 
-/* Add two non-negative fixed-precision integers without allowing a signed
- * wraparound to turn a failed bound computation into a smaller box. */
 static int
 add_nonnegative_checked(ibz_t *sum, const ibz_t *a, const ibz_t *b)
 {
-    int ok = 0;
-    ibz_t room;
-    ibz_init(&room);
-    if (ibz_is_negative(a) || ibz_is_negative(b))
-        goto cleanup;
-    for (int i = 0; i < IBZ_LIMBS; i++)
-        room[i] = UINT64_MAX;
-    room[IBZ_LIMBS - 1] >>= 1;
-    ibz_sub(&room, &room, a);
-    if (ibz_cmp(b, &room) > 0)
-        goto cleanup;
-    ibz_add(sum, a, b);
-    ok = 1;
-cleanup:
-    ibz_finalize(&room);
-    return ok;
+    return !ibz_is_negative(a) && !ibz_is_negative(b) && ibz_add_checked(sum, a, b);
 }
 
 static int
 mul_nonnegative_checked(ibz_t *product, const ibz_t *a, const ibz_t *b)
 {
-    int ok = 0;
-    ibz_t limit, quotient, remainder;
-    ibz_init(&limit);
-    ibz_init(&quotient);
-    ibz_init(&remainder);
-    if (ibz_is_negative(a) || ibz_is_negative(b))
-        goto cleanup;
-    if (ibz_is_zero(a) || ibz_is_zero(b)) {
-        ibz_set(product, 0);
-        ok = 1;
-        goto cleanup;
-    }
-    for (int i = 0; i < IBZ_LIMBS; i++)
-        limit[i] = UINT64_MAX;
-    limit[IBZ_LIMBS - 1] >>= 1;
-    ibz_div(&quotient, &remainder, &limit, b);
-    if (ibz_cmp(a, &quotient) > 0)
-        goto cleanup;
-    ibz_mul(product, a, b);
-    ok = 1;
-cleanup:
-    ibz_finalize(&limit);
-    ibz_finalize(&quotient);
-    ibz_finalize(&remainder);
-    return ok;
+    return !ibz_is_negative(a) && !ibz_is_negative(b) && ibz_mul_checked(product, a, b);
 }
 
 static int
@@ -155,7 +114,7 @@ failure:
     return 0;
 }
 
-/* Compute floor(c * numerator / denominator), where 1 <= c <= 3, without
+/* Compute floor(c * numerator / denominator), where 1 <= c <= 5, without
  * ever forming c*numerator.  The modular-accumulation loop also avoids the
  * otherwise possible overflow in c*remainder when denominator is full width. */
 static int
@@ -171,15 +130,15 @@ floor_ratio_small(ibz_t *quotient, const ibz_t *numerator, const ibz_t *denomina
     ibz_init(&scaled_q);
     ibz_init(&small);
 
-    if (c == 0 || c > 3 || ibz_is_negative(numerator) ||
+    if (c == 0 || c > 5 || ibz_is_negative(numerator) ||
         ibz_cmp(denominator, &ibz_const_zero) <= 0)
         goto cleanup;
 
     ibz_div(&q, &r, numerator, denominator);
-    /* c <= 3.  This conservative bit check guarantees the signed product
+    /* c <= 5.  This conservative bit check guarantees the signed product
      * fits even in builds where arithmetic overflow checks are disabled. */
     if (!ibz_is_zero(&q)) {
-        const unsigned headroom = (c == 1) ? 0 : (c == 2) ? 1 : 2;
+        const unsigned headroom = (c == 1) ? 0 : (c == 2) ? 1 : (c <= 4) ? 2 : 3;
         if (ibz_bitsize(&q) > IBZ_BITS - 1 - (int)headroom)
             goto cleanup;
     }
@@ -210,35 +169,35 @@ cleanup:
     return ok;
 }
 
-/* Return ceil((33/64)*x).  33/64 is a dyadic, rigorously certified upper
+/* Return ceil((17/32)*x).  17/32 is a dyadic, rigorously certified upper
  * bound for every Gram--Schmidt coefficient accepted below. */
 static int
 ceil_eta_times(ibz_t *out, const ibz_t *x)
 {
     int ok = 0;
     int32_t rem_i;
-    ibz_t sixty_four, thirty_three, q, r, tail;
-    ibz_init(&sixty_four);
-    ibz_init(&thirty_three);
+    ibz_t denominator, numerator, q, r, tail;
+    ibz_init(&denominator);
+    ibz_init(&numerator);
     ibz_init(&q);
     ibz_init(&r);
     ibz_init(&tail);
-    ibz_set(&sixty_four, 64);
-    ibz_set(&thirty_three, 33);
+    ibz_set(&denominator, 32);
+    ibz_set(&numerator, 17);
 
     if (ibz_is_negative(x))
         goto cleanup;
-    ibz_div(&q, &r, x, &sixty_four);
-    ibz_mul(out, &q, &thirty_three);
+    ibz_div(&q, &r, x, &denominator);
+    ibz_mul(out, &q, &numerator);
     rem_i = ibz_get(&r);
-    ibz_set(&tail, (33 * rem_i + 63) / 64);
+    ibz_set(&tail, (17 * rem_i + 31) / 32);
     if (!add_nonnegative_checked(out, out, &tail))
         goto cleanup;
     ok = 1;
 
 cleanup:
-    ibz_finalize(&sixty_four);
-    ibz_finalize(&thirty_three);
+    ibz_finalize(&denominator);
+    ibz_finalize(&numerator);
     ibz_finalize(&q);
     ibz_finalize(&r);
     ibz_finalize(&tail);
@@ -374,8 +333,8 @@ dpe_interval_div(dpe_interval_t *out, dpe_interval_t *a, dpe_interval_t *b)
 }
 
 /* Certify positive definiteness, and for a reduced Gram matrix also certify
- * |mu_ij| <= 33/64 and r_i >= (11/16) r_(i-1).  These dyadic thresholds are
- * exact and leave a large gap to L2's .505/.995 targets. */
+ * |mu_ij| <= 17/32 and r_i >= (19/32) r_(i-1).  These dyadic thresholds are
+ * exact and leave a large gap to the Section 4 L2 targets. */
 static int
 certify_gram(const ibz_mat_4x4_t *G, int reduced, dpe_t shortest_lower)
 {
@@ -389,9 +348,9 @@ certify_gram(const ibz_mat_4x4_t *G, int reduced, dpe_t shortest_lower)
             dpe_interval_set_z(&A[i][j], &(*G)[i][j]);
         }
     }
-    dpe_interval_set_dyadic(&eta, 33, 6);
-    dpe_interval_set_dyadic(&neg_eta, -33, 6);
-    dpe_interval_set_dyadic(&alpha, 11, 4);
+    dpe_interval_set_dyadic(&eta, 17, 5);
+    dpe_interval_set_dyadic(&neg_eta, -17, 5);
+    dpe_interval_set_dyadic(&alpha, 19, 5);
 
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < i; j++) {
@@ -433,6 +392,43 @@ certify_gram(const ibz_mat_4x4_t *G, int reduced, dpe_t shortest_lower)
     return 1;
 }
 
+/* An inconclusive interval is not a proof of non-positivity.  For small
+ * entries, certify Sylvester's criterion exactly.  If |G_ij| < 2^b, each
+ * determinant partial sum is bounded by 24*2^(4b) < 2^(4b+5); the bit gate
+ * reserves the sign bit and also bounds all cofactors in the existing
+ * inverse helper.  Large inputs keep the interval-only capacity policy. */
+static int
+certify_gram_small_exact(const ibz_mat_4x4_t *G)
+{
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            if (ibz_cmp(&(*G)[i][j], &(*G)[j][i]) != 0 ||
+                ibz_bitsize(&(*G)[i][j]) > (IBZ_BITS - 6) / 4)
+                return 0;
+        }
+    }
+
+    int ok = 1;
+    ibz_mat_4x4_t minor;
+    ibz_t det;
+    ibz_mat_4x4_init(&minor);
+    ibz_init(&det);
+    for (int n = 1; n <= 4; n++) {
+        ibz_mat_4x4_identity(&minor);
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < n; j++)
+                ibz_copy(&minor[i][j], &(*G)[i][j]);
+        ibz_mat_4x4_inv_with_det_as_denom(NULL, &det, &minor);
+        if (ibz_cmp(&det, &ibz_const_zero) <= 0) {
+            ok = 0;
+            break;
+        }
+    }
+    ibz_finalize(&det);
+    ibz_mat_4x4_finalize(&minor);
+    return ok;
+}
+
 static int
 bound_parallelogram_reduced(ibz_vec_4_t *box,
                             ibz_mat_4x4_t *U,
@@ -445,7 +441,7 @@ bound_parallelogram_reduced(ibz_vec_4_t *box,
 
     int ok = 0;
     int nonzero = 0;
-    static const unsigned diagonal_factors[4] = { 1, 2, 2, 3 };
+    static const unsigned diagonal_factors[4] = { 1, 2, 3, 4 };
     ibz_mat_4x4_t reduced_G, transform;
     ibz_vec_4_t base;
     ibz_t ratio, tail_sum, eta_tail;
@@ -459,7 +455,7 @@ bound_parallelogram_reduced(ibz_vec_4_t *box,
     ibz_init(&eta_tail);
     dpe_init(shortest_lower);
 
-    if (!certify_gram(G, 0, NULL))
+    if (!certify_gram(G, 0, NULL) && !certify_gram_small_exact(G))
         goto cleanup;
 
     /* Work in a primal L2-reduced basis.  If T is the transformation built
@@ -473,12 +469,12 @@ bound_parallelogram_reduced(ibz_vec_4_t *box,
 
     /* Let r_i be the squared Gram--Schmidt lengths and mu_ij the reduced
      * coefficients.  The outward interval certificate above proves the
-     * exact dyadic inequalities |mu_ij|<=33/64 and
-     * r_i>=(11/16)*r_(i-1).  Consequently
+     * exact dyadic inequalities |mu_ij|<=17/32 and
+     * r_i>=(19/32)*r_(i-1).  Consequently
      *
      *   G_ii = r_i + sum_{j<i} mu_ij^2 r_j <= C_i*r_i,
      *
-     * with the integer upper bounds C=(1,2,2,3).  Thus every vector of norm
+     * with the integer upper bounds C=(1,2,3,4).  Thus every vector of norm
      * at most radius has |z_i|<=sqrt(C_i*radius/G_ii) in orthogonal
      * coordinates.  This replaces the former rounded inverse/cofactor
      * diagonal, which could underbound even when its DPE result was off by
@@ -653,4 +649,89 @@ err:
     ibz_vec_4_finalize(&original_box);
     ibz_vec_4_finalize(&box);
     return ok;
+}
+
+quat_ball_status_t
+quat_lattice_sample_from_ball_direct_with_sampler(quat_alg_elem_t *res,
+                                                 const quat_lattice_t *lattice,
+                                                 const quat_alg_t *alg,
+                                                 const ibz_t *bound,
+                                                 unsigned trials,
+                                                 int (*sample)(ibz_t *, const ibz_t *, const ibz_t *))
+{
+    if (res == NULL || lattice == NULL || alg == NULL || bound == NULL || sample == NULL ||
+        ibz_cmp(&lattice->denom, &ibz_const_zero) <= 0 ||
+        ibz_cmp(&alg->p, &ibz_const_zero) <= 0 || ibz_cmp(bound, &ibz_const_zero) <= 0)
+        return QUAT_BALL_INVALID;
+
+    static const int kappa[4] = { 14, 6, 4, 5 };
+    ibz_t scaled_bound, limit, weighted_limit, tmp, remainder;
+    if (!ibz_mul_checked(&scaled_bound, &lattice->denom, &lattice->denom) ||
+        !ibz_mul_checked(&scaled_bound, &scaled_bound, bound))
+        return QUAT_BALL_PRECISION;
+    ibz_sqrt_floor(&limit, &scaled_bound);
+    ibz_div(&tmp, &remainder, &scaled_bound, &alg->p);
+    ibz_sqrt_floor(&weighted_limit, &tmp);
+
+    ibz_vec_4_t upper, lower, column;
+    for (int i = 0; i < 4; i++) {
+        ibz_t norm, factor;
+        for (int row = 0; row < 4; row++)
+            ibz_copy(&column[row], &lattice->basis[row][i]);
+        if (!quat_alg_coord_norm(&norm, &column, alg))
+            return QUAT_BALL_PRECISION;
+        if (ibz_is_zero(&norm))
+            return QUAT_BALL_INVALID;
+        ibz_set(&factor, kappa[i]);
+        if (!ibz_mul_checked(&tmp, &factor, &scaled_bound))
+            return QUAT_BALL_PRECISION;
+        ibz_div(&tmp, &remainder, &tmp, &norm);
+        ibz_sqrt_floor(&upper[i], &tmp);
+        ibz_neg(&lower[i], &upper[i]);
+    }
+
+    quat_alg_elem_t candidate;
+    ibz_copy(&candidate.denom, &lattice->denom);
+    for (unsigned trial = 0; trial < trials; trial++) {
+        ibz_vec_4_t coefficients;
+        for (int i = 0; i < 4; i++) {
+            if (ibz_is_zero(&upper[i])) {
+                ibz_set(&coefficients[i], 0);
+            } else if (!sample(&coefficients[i], &lower[i], &upper[i])) {
+                return QUAT_BALL_RNG_FAILURE;
+            }
+        }
+        if (!ibz_mat_4x4_eval_checked(&candidate.coord, &lattice->basis, &coefficients))
+            return QUAT_BALL_PRECISION;
+
+        /* Rejected proposals can have a norm above the allocation. Screen
+         * coordinates before forming even the first square. */
+        int inside = 1;
+        for (int i = 0; i < 4; i++) {
+            ibz_abs(&tmp, &candidate.coord[i]);
+            if (ibz_is_negative(&tmp) || ibz_cmp(&tmp, i < 2 ? &limit : &weighted_limit) > 0) {
+                inside = 0;
+                break;
+            }
+        }
+        if (!inside)
+            continue;
+
+        /* Each surviving term is at most S. If their sum exceeds signed
+         * capacity it is above S as well, so it is a rejected proposal. */
+        if (quat_alg_coord_norm(&tmp, &candidate.coord, alg) && ibz_cmp(&tmp, &scaled_bound) <= 0) {
+            quat_alg_elem_copy(res, &candidate);
+            return QUAT_BALL_SUCCESS;
+        }
+    }
+    return QUAT_BALL_EXHAUSTED;
+}
+
+quat_ball_status_t
+quat_lattice_sample_from_ball_direct(quat_alg_elem_t *res,
+                                    const quat_lattice_t *lattice,
+                                    const quat_alg_t *alg,
+                                    const ibz_t *bound)
+{
+    return quat_lattice_sample_from_ball_direct_with_sampler(res, lattice, alg, bound, 65536, ibz_rand_interval);
 }

@@ -114,6 +114,7 @@ def render_makefile(
         f"{stem}_ROOT := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))/backend",
         f"{stem}_DEFINITIONS := {make_words(target_definitions)}",
         f"{stem}_HOST_DEFINITIONS := {make_words(host_definitions)}",
+        f"{stem}_CHECKED := $(if $(filter 1,$(SQISIGN_CHECKED)),-UNDEBUG -DSQISIGN_INTBIG_OVERFLOW_CHECK)",
         f"{stem}_OPTIONS := {make_words(options)}",
         f"{stem}_INCLUDE_DIRS := $(addprefix $({stem}_ROOT)/,{make_words(include_directories)})",
         # pqm4 adds -Icommon and -Imupq/common before implementation-specific
@@ -121,8 +122,8 @@ def render_makefile(
         # (notably fips202.h) wins over an unrelated pqm4 header regardless of
         # command-line ordering, without shadowing angle-bracket platform APIs.
         f"{stem}_INCLUDE_FLAGS := $(addprefix -iquote,$({stem}_INCLUDE_DIRS))",
-        f"{stem}_CPPFLAGS := $({stem}_DEFINITIONS) $({stem}_INCLUDE_FLAGS)",
-        f"{stem}_HOST_CPPFLAGS := $({stem}_HOST_DEFINITIONS) $({stem}_INCLUDE_FLAGS)",
+        f"{stem}_CPPFLAGS := $({stem}_DEFINITIONS) $({stem}_CHECKED) $({stem}_INCLUDE_FLAGS)",
+        f"{stem}_HOST_CPPFLAGS := $({stem}_HOST_DEFINITIONS) $({stem}_CHECKED) $({stem}_INCLUDE_FLAGS)",
         "",
         f"obj/lib{implementation}.a: CPPFLAGS += $({stem}_CPPFLAGS)",
         f"obj/lib{implementation}.a: CFLAGS += $({stem}_CPPFLAGS) $({stem}_OPTIONS)",
@@ -134,10 +135,14 @@ def render_makefile(
         host_binary = f"bin-host/{implementation}_testvectors"
         lines.extend(
             [
+                f"{stem}_HOST_OPTIONS := $({stem}_OPTIONS)",
+                "ifneq ($(findstring clang,$(shell $(HOST_CC) --version 2>/dev/null)),)",
+                f"{stem}_HOST_OPTIONS := $(filter-out -fexcess-precision=standard,$({stem}_HOST_OPTIONS))",
+                "endif",
                 f"{audit}: HOST_CPPFLAGS += $({stem}_HOST_CPPFLAGS)",
-                f"{audit}: HOST_CFLAGS += $({stem}_HOST_CPPFLAGS) $({stem}_OPTIONS)",
+                f"{audit}: HOST_CFLAGS += $({stem}_HOST_CPPFLAGS) $({stem}_HOST_OPTIONS)",
                 f"{host_binary}: HOST_CPPFLAGS += $({stem}_HOST_CPPFLAGS)",
-                f"{host_binary}: HOST_CFLAGS += $({stem}_HOST_CPPFLAGS) $({stem}_OPTIONS)",
+                f"{host_binary}: HOST_CFLAGS += $({stem}_HOST_CPPFLAGS) $({stem}_HOST_OPTIONS)",
                 # The fixed-precision DPE layer calls round/llround. pqm4's
                 # firmware flags already link libm, but its host harness does
                 # not, so keep this dependency scoped to the imported binary.
@@ -231,7 +236,7 @@ def consume(export_root: Path, implementation_root: Path, stage: Path) -> None:
 
     config_bytes = config_path.read_bytes()
     try:
-        config_text = config_bytes.decode("utf-8")
+        config_text = config_bytes.decode("utf-8").replace("\r\n", "\n")
     except UnicodeDecodeError as exc:
         raise ConsumeError(f"config.mk is not UTF-8: {config_path}") from exc
     if CONFIG_BEGIN in config_text or "backend_compile_flags.mk" in config_text:

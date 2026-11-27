@@ -23,6 +23,10 @@
 #endif
 
 typedef enum {
+    SIGNATURE_STEP_RESPONSE_EXHAUSTED = -5,
+    SIGNATURE_STEP_RESPONSE_RNG_FAILURE = -4,
+    SIGNATURE_STEP_RESPONSE_PRECISION = -3,
+    SIGNATURE_STEP_RESPONSE_INVALID = -2,
     SIGNATURE_STEP_ML2_EXHAUSTED = -1,
     SIGNATURE_STEP_RETRY = 0,
     SIGNATURE_STEP_OK = 1,
@@ -47,10 +51,9 @@ _Static_assert(sizeof(protocols_sign_post_challenge_storage_t) >=
                    sizeof(quat_left_ideal_t),
                "phase union must not enlarge the previous signing workspace");
 
-/* Objects that must survive across the signing retry loop.  Keeping them in
- * one target-only arena block removes roughly 25 KiB from the level-V main
- * stack.  The operation guard makes this storage non-reentrant on Cortex-M4;
- * host builds retain an automatic instance for thread-safe tests. */
+/* These objects survive ML2 and theta calls. Keep the Cortex-M4 instance
+ * in ordinary SRAM so the CCM arena can be reused by each of those phases.
+ * The pqm4 operation guard serializes target entry points. */
 typedef struct protocols_sign_workspace {
     ibz_t remain;
     ibz_t lattice_content;
@@ -64,8 +67,10 @@ typedef struct protocols_sign_workspace {
 } protocols_sign_workspace_t;
 
 #ifdef TARGET_ARM
-_Static_assert(sizeof(protocols_sign_workspace_t) <= 25120,
-               "signing persistent workspace exceeds the audited bound");
+_Static_assert(sizeof(protocols_sign_workspace_t) <= 33328u,
+               "persistent signing state exceeds its SRAM1 budget");
+static protocols_sign_workspace_t signing_state;
+static int signing_state_busy;
 #endif
 
 // compute the commitment with ideal to isogeny clapotis
@@ -129,19 +134,31 @@ compute_challenge_ideal_signature(quat_left_ideal_t *lideal_chall_two, const sig
     return 1;
 }
 
-static int
-sample_response(quat_alg_elem_t *x, const quat_lattice_t *lattice, const ibz_t *lattice_content)
+static signature_step_status_t
+sample_response(quat_alg_elem_t *out, const quat_lattice_t *lattice, const ibz_t *lattice_content)
 {
     ibz_t bound;
-    ibz_init(&bound);
     ibz_pow(&bound, &ibz_const_two, SQIsign_response_length);
     ibz_sub(&bound, &bound, &ibz_const_one);
-    ibz_mul(&bound, &bound, lattice_content);
+    if (!ibz_mul_checked(&bound, &bound, lattice_content))
+        return SIGNATURE_STEP_RESPONSE_PRECISION;
 
-    int ok = quat_lattice_sample_from_ball(x, lattice, &QUATALG_PINFTY, &bound);
-
-    ibz_finalize(&bound);
-    return ok;
+    for (unsigned trial = 0; trial < 256; trial++) {
+        quat_alg_elem_t candidate;
+        switch (quat_lattice_sample_from_ball_direct(&candidate, lattice, &QUATALG_PINFTY, &bound)) {
+        case QUAT_BALL_INVALID: return SIGNATURE_STEP_RESPONSE_INVALID;
+        case QUAT_BALL_PRECISION: return SIGNATURE_STEP_RESPONSE_PRECISION;
+        case QUAT_BALL_RNG_FAILURE: return SIGNATURE_STEP_RESPONSE_RNG_FAILURE;
+        case QUAT_BALL_EXHAUSTED: return SIGNATURE_STEP_RESPONSE_EXHAUSTED;
+        case QUAT_BALL_SUCCESS:
+            if (!quat_alg_elem_is_zero(&candidate)) {
+                quat_alg_elem_copy(out, &candidate);
+                return SIGNATURE_STEP_OK;
+            }
+            break;
+        }
+    }
+    return SIGNATURE_STEP_RESPONSE_EXHAUSTED;
 }
 
 static SIGNATURE_NOINLINE signature_step_status_t
@@ -189,12 +206,14 @@ compute_response_quat_element(quat_alg_elem_t *resp_quat,
     }
 
     // sampling the smallest response
-    ibz_mul(lattice_content, &lideal_chall_secret.norm, &lideal_commit->norm);
-    if (!sample_response(resp_quat, &lideal_chall_secret.lattice, lattice_content)) {
-        status = SIGNATURE_STEP_RETRY;
+    ibz_t candidate_content;
+    if (!ibz_mul_checked(&candidate_content, &lideal_chall_secret.norm, &lideal_commit->norm)) {
+        status = SIGNATURE_STEP_RESPONSE_PRECISION;
         goto cleanup;
     }
-    status = SIGNATURE_STEP_OK;
+    status = sample_response(resp_quat, &lideal_chall_secret.lattice, &candidate_content);
+    if (status == SIGNATURE_STEP_OK)
+        ibz_copy(lattice_content, &candidate_content);
 
     // Clean up
 cleanup:
@@ -209,7 +228,7 @@ compute_backtracking_signature(signature_t *sig, quat_alg_elem_t *resp_quat, ibz
 {
     int ok = 0;
     int denom_modified = 0;
-    uint_fast8_t backtracking = 0;
+    uint16_t backtracking = 0;
     ibz_t tmp;
     ibz_init(&tmp);
 
@@ -236,7 +255,7 @@ compute_backtracking_signature(signature_t *sig, quat_alg_elem_t *resp_quat, ibz
     if (valuation < 0 || valuation > SQIsign_response_length) {
         goto cleanup;
     }
-    backtracking = (uint_fast8_t)valuation;
+    backtracking = (uint16_t)valuation;
 
     /* dummy_coord is dead after primitivization.  Divisibility by 2^k is
      * exactly a two-adic valuation check, and its first entry can hold the
@@ -261,7 +280,7 @@ cleanup:
 }
 
 static SIGNATURE_NOINLINE signature_step_status_t
-compute_random_aux_norm_and_helpers(uint_fast8_t *out_pow_dim2_deg_resp,
+compute_random_aux_norm_and_helpers(uint16_t *out_pow_dim2_deg_resp,
                                     signature_t *sig,
                                     ibz_t *random_aux_norm,
                                     ibz_t *degree_resp_inv,
@@ -271,8 +290,8 @@ compute_random_aux_norm_and_helpers(uint_fast8_t *out_pow_dim2_deg_resp,
                                     quat_left_ideal_t *lideal_com_resp,
                                     quat_left_ideal_t *lideal_commit)
 {
-    uint_fast8_t pow_dim2_deg_resp;
-    uint_fast8_t exp_diadic_val_full_resp;
+    uint16_t pow_dim2_deg_resp;
+    uint16_t exp_diadic_val_full_resp;
     signature_step_status_t status = SIGNATURE_STEP_RETRY;
 
     ibz_t tmp, degree_full_resp, degree_odd_resp, norm_d;
@@ -314,7 +333,7 @@ compute_random_aux_norm_and_helpers(uint_fast8_t *out_pow_dim2_deg_resp,
     if (valuation < 0 || valuation > SQIsign_response_length - sig->backtracking) {
         goto done;
     }
-    exp_diadic_val_full_resp = (uint_fast8_t)valuation;
+    exp_diadic_val_full_resp = (uint16_t)valuation;
     sig->two_resp_length = exp_diadic_val_full_resp;
 
     // removing the power of two part
@@ -703,10 +722,10 @@ protocols_sign(signature_t *sig, const public_key_t *pk, secret_key_t *sk, const
     int reduced_order = 0; // work around false positive gcc warning
 
 #ifdef TARGET_ARM
-    protocols_sign_workspace_t *workspace =
-        (protocols_sign_workspace_t *)sqisign_m4_workspace_acquire(sizeof(*workspace));
-    if (workspace == NULL)
+    if (signing_state_busy)
         return 0;
+    signing_state_busy = 1;
+    protocols_sign_workspace_t *workspace = &signing_state;
 #else
     protocols_sign_workspace_t automatic_workspace;
     protocols_sign_workspace_t *workspace = &automatic_workspace;
@@ -725,8 +744,8 @@ protocols_sign(signature_t *sig, const public_key_t *pk, secret_key_t *sk, const
         &workspace->challenge_or_codomain.post_challenge.Eaux2_Echall2;
     ec_curve_t *const E_chall = &workspace->E_chall;
 
-    uint_fast8_t pow_dim2_deg_resp;
-    assert(SQIsign_response_length <= (intmax_t)UINT_FAST8_MAX); // otherwise we might need more bits there
+    uint16_t pow_dim2_deg_resp;
+    _Static_assert(SQIsign_response_length <= UINT16_MAX, "response exponent fits in uint16_t");
 
     ibz_init(remain);
     ibz_init(lattice_content);
@@ -784,7 +803,7 @@ protocols_sign(signature_t *sig, const public_key_t *pk, secret_key_t *sk, const
             // Clean up
             quat_left_ideal_finalize(lideal_chall_two);
 
-            if (response_status == SIGNATURE_STEP_ML2_EXHAUSTED) {
+            if (response_status < SIGNATURE_STEP_RETRY) {
                 ret = 0;
                 goto cleanup;
             }
@@ -963,7 +982,10 @@ cleanup:
     ibz_finalize(random_aux_norm);
 
 #ifdef TARGET_ARM
-    sqisign_m4_workspace_release(workspace);
+    volatile unsigned char *scratch = (volatile unsigned char *)workspace;
+    for (size_t i = 0; i < sizeof(*workspace); i++)
+        scratch[i] = 0;
+    signing_state_busy = 0;
 #endif
 
     return ret;

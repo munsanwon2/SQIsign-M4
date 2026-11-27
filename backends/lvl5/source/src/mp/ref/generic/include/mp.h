@@ -5,14 +5,9 @@
 #include <stdbool.h>
 #include <tutil.h>
 
-/* Largest scalar width among the shipped lvl1/lvl3/lvl5 parameter sets.
- * Keeping this radix-neutral bound removes VLAs without growing the frame
- * beyond the actual Level-V requirement. */
-#if RADIX == 32
-#define SQISIGN_MP_MAX_WORDS 16u
-#else
-#define SQISIGN_MP_MAX_WORDS 8u
-#endif
+/* The generic MP library serves all levels. Its scalar scratch must hold
+ * the Level-V order representation (704 bits including limb padding). */
+#define SQISIGN_MP_MAX_WORDS (704u / RADIX)
 
 // Functions taken from the GF module
 

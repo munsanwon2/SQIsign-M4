@@ -4,9 +4,9 @@
 #include <stddef.h>
 
 #define CRYPTO_ALGNAME "SQIsign-Qlapoti-L3"
-#define CRYPTO_PUBLICKEYBYTES 97u
-#define CRYPTO_SECRETKEYBYTES 529u
-#define CRYPTO_BYTES 224u
+#define CRYPTO_PUBLICKEYBYTES 129u
+#define CRYPTO_SECRETKEYBYTES 711u
+#define CRYPTO_BYTES 284u
 
 int crypto_sign_keypair(unsigned char *pk, unsigned char *sk);
 int crypto_sign(unsigned char *sm, size_t *smlen,

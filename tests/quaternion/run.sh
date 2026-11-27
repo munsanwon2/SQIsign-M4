@@ -24,12 +24,15 @@ fi
 for level in "${levels[@]}"; do
   source_root="$ROOT/backends/lvl$level/source"
   quaternion="$source_root/src/quaternion/ref/generic"
+  overlay="$ROOT/pqm4-overlay/crypto_sign/sqisign-qlapoti-lvl$level/m4"
   flags=(
     -std=c11 -O1 -g -Wall -Wextra
     -ffunction-sections -fdata-sections -fno-strict-aliasing
+    -fno-fast-math -ffp-contract=off -frounding-math
     -DDISABLE_NAMESPACING -DRADIX_32 -DSQISIGN_BUILD_TYPE_REF
     "-DSQISIGN_VARIANT=lvl$level" -DSQISIGN_INTBIG_OVERFLOW_CHECK
     "-I$source_root/include" "-I$quaternion/include"
+    "-I$source_root/src/common/generic/include"
     "-I$quaternion/internal_quaternion_headers" "-I$quaternion"
     "-I$quaternion/lll"
   )
@@ -51,5 +54,13 @@ for level in "${levels[@]}"; do
     "$quaternion/lll/mlll.c" "$quaternion/dpe.c" "${common[@]}" \
     -Wl,--gc-sections -lm -o "$BUILD_DIR/ml2-lvl$level"
   "$BUILD_DIR/ml2-lvl$level"
+
+  # Select the portable 32-bit-half path even on a host with __int128.
+  "$CC" "${flags[@]}" -U__SIZEOF_INT128__ -fsanitize=undefined -fno-sanitize-recover=all \
+    "-I$overlay" "$overlay/qlapoti_workspace.c" "$overlay/m4_operation_guard.c" \
+    "$ROOT/tests/quaternion/compact_regression.c" "$quaternion/lll/ml2.c" \
+    "$quaternion/dpe.c" "$quaternion/lat_ball.c" "$quaternion/lll/mlll.c" "${common[@]}" \
+    -Wl,--gc-sections -lm -o "$BUILD_DIR/compact-lvl$level"
+  "$BUILD_DIR/compact-lvl$level"
   echo "Level $level quaternion regressions passed"
 done

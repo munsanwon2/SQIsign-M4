@@ -26,14 +26,6 @@ static const quat_represent_integer_params_t QUAT_represent_integer_params = {
     .primality_test_iterations = QUAT_primality_num_iter // precompted bound on the iteration number in primality tests
 };
 
-static const ibz_cornacchia_extended_params_t QUAT_cornacchia_extended_params = {
-    .bad_primes_prod = &ibz_const_one,
-    .primality_test_iterations = QUAT_primality_num_iter,
-    .prime_list = &(QUAT_small_primes_where_neg_q_square[0]),
-    .prime_list_length = QUAT_good_prime_lists_length,
-    .q = 1,
-};
-
 /*************************** Functions *****************************/
 
 /** @defgroup id2iso_others Other functions needed for id2iso

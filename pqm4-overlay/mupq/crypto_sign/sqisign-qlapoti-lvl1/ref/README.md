@@ -1,7 +1,7 @@
 # sqisign-qlapoti-lvl1 / ref
 
 This directory is the portable pqm4 reference wrapper for Level I. It
-uses the same fixed-precision compact-SQIsign + Qlapoti source and 9x29
+uses the same fixed-precision compact-SQIsign + Qlapoti source and 12x28
 field representation as the Cortex-M4 implementation.
 
 Run `scripts/inject_scheme_backends.sh` to add the content-addressed source

@@ -8,6 +8,8 @@
 #include <biextension.h>
 #include <torsion_constants.h>
 
+_Static_assert(NWORDS_ORDER <= SQISIGN_MP_MAX_WORDS, "scalar operations require more MP scratch");
+
 // Scalar multiplication [x]P + [y]Q where x and y are stored
 // inside an ibz_vec_2_t [x, y] and P, Q \in E[2^f]
 int

@@ -402,6 +402,9 @@ void quat_alg_elem_set(quat_alg_elem_t *elem,
  */
 void quat_alg_elem_copy(quat_alg_elem_t *copy, const quat_alg_elem_t *copied);
 
+/** Return whether all four numerator coordinates are zero. */
+int quat_alg_elem_is_zero(const quat_alg_elem_t *x);
+
 /** @brief a=b
  *
  * Test if a and b represent the same quaternion algebra element
@@ -560,6 +563,24 @@ int quat_lattice_sample_from_ball(quat_alg_elem_t *res,
                                   const quat_lattice_t *lattice,
                                   const quat_alg_t *alg,
                                   const ibz_t *radius);
+
+typedef enum {
+    QUAT_BALL_INVALID = -3,
+    QUAT_BALL_PRECISION = -2,
+    QUAT_BALL_RNG_FAILURE = -1,
+    QUAT_BALL_EXHAUSTED = 0,
+    QUAT_BALL_SUCCESS = 1
+} quat_ball_status_t;
+
+/** Sample uniformly including zero and the norm boundary. The input basis
+ * must be ordered, full rank and (0.86, 0.55)-LLL-reduced in the quaternion
+ * metric, with positive denominator. The positive bound is on reduced norm.
+ * On failure the output stays unchanged.
+ */
+quat_ball_status_t quat_lattice_sample_from_ball_direct(quat_alg_elem_t *res,
+                                                       const quat_lattice_t *lattice,
+                                                       const quat_alg_t *alg,
+                                                       const ibz_t *bound);
 
 // end quat_lat_f
 /** @}

@@ -28,11 +28,11 @@ extern "C"
 #define _IBZ_CONCAT(a, b) a##b
 #define _IBZ_CONCAT2(a, b) _IBZ_CONCAT(a, b)
 
-/* Revised worst-case magnitude bounds 1665 / 2521 / 3319, with one sign bit
+/* Section 4 Sign magnitude bounds 2169 / 3334 / 4395, with one sign bit
  * and rounded up to complete 64-bit limbs. */
-#define IBZ_LIMBS_lvl1 27  /* NIST-I:   1728 total / 1727 magnitude bits */
-#define IBZ_LIMBS_lvl3 40  /* NIST-III: 2560 total / 2559 magnitude bits */
-#define IBZ_LIMBS_lvl5 52  /* NIST-V:   3328 total / 3327 magnitude bits */
+#define IBZ_LIMBS_lvl1 34  /* NIST-I:   2176 total / 2175 magnitude bits */
+#define IBZ_LIMBS_lvl3 53  /* NIST-III: 3392 total / 3391 magnitude bits */
+#define IBZ_LIMBS_lvl5 69  /* NIST-V:   4416 total / 4415 magnitude bits */
 
 #ifdef SQISIGN_VARIANT
 #define IBZ_LIMBS _IBZ_CONCAT2(IBZ_LIMBS_, SQISIGN_VARIANT)
@@ -41,7 +41,8 @@ extern "C"
 #endif
 #endif
 
-/* Keep every route cap within the configured signed storage width. */
+/* Retain the legacy general-lattice HNF caps. Compact ideal operations have
+ * their own input admission and bypass HNF. */
 #define IBZ_HNF_ROUTE_BITS_lvl1 (27 * 64)
 #define IBZ_HNF_ROUTE_BITS_lvl3 (40 * 64)
 #define IBZ_HNF_ROUTE_BITS_lvl5 (52 * 64)
@@ -80,6 +81,10 @@ extern "C"
     void ibz_add(ibz_t *sum, const ibz_t *a, const ibz_t *b);
     void ibz_sub(ibz_t *diff, const ibz_t *a, const ibz_t *b);
     void ibz_mul(ibz_t *prod, const ibz_t *a, const ibz_t *b);
+    /* Return 0 without changing the output if the exact result does not fit. */
+    int ibz_add_checked(ibz_t *sum, const ibz_t *a, const ibz_t *b);
+    int ibz_sub_checked(ibz_t *diff, const ibz_t *a, const ibz_t *b);
+    int ibz_mul_checked(ibz_t *prod, const ibz_t *a, const ibz_t *b);
 
     /** Divide by 2^exp, truncating toward zero. */
     void ibz_div_2exp(ibz_t *quotient, const ibz_t *a, uint32_t exp);
@@ -99,7 +104,7 @@ extern "C"
 
     int ibz_cmp_int32(const ibz_t *x, int32_t y);
     int ibz_bitsize(const ibz_t *a);
-    /** Number of base-2^64 digits needed for |a| (one for zero). */
+    /** Number of 64-bit limbs needed for |a| (one for zero). */
     size_t ibz_digits_required(const ibz_t *a);
     /** Export |a| to exactly target_len available digits, clearing unused
      * digits.  Returns zero without a partial value when the buffer is too

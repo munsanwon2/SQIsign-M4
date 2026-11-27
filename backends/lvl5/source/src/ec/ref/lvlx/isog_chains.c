@@ -1,8 +1,8 @@
 #include "isog.h"
 #include <assert.h>
 
-#define EC_EVEN_CHAIN_MAX_LENGTH 512
-#define EC_EVEN_CHAIN_MAX_SPLITS 10
+#define EC_EVEN_CHAIN_MAX_LENGTH TORSION_EVEN_POWER
+#define EC_EVEN_CHAIN_MAX_SPLITS (TORSION_EVEN_POWER > 512 ? 11 : 10)
 
 // since we use degree 4 isogeny steps, we need to handle the odd case with care
 static uint32_t
@@ -41,7 +41,8 @@ ec_eval_even_strategy(ec_curve_t *curve,
         assert(todo[current] >= 1);
         // Get the next point of order 4
         while (todo[current] != 2) {
-            assert(todo[current] >= 3);
+            if (todo[current] < 3 || current + 1 >= space)
+                return (uint32_t)-1;
             // A new split will be added
             ++current;
             assert(current < space);
